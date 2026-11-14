@@ -278,20 +278,23 @@ def mux_audio(
 
 
 def make_thumbnail(input_path: str, thumb_path: str) -> bool:
-    args = [
-        config.FFMPEG_PATH,
-        "-hide_banner", "-nostdin", "-loglevel", "error",
-        "-ss", "0.5",
-        "-i", input_path,
-        "-frames:v", "1",
-        "-vf", "scale=112:63:force_original_aspect_ratio=increase,crop=112:63",
-        "-q:v", "5", "-y", thumb_path,
-    ]
-    try:
-        result = _run(args, timeout=60)
-        return result.returncode == 0 and Path(thumb_path).exists()
-    except EngineError:
-        return False
+    for seek in ("0.5", "0"):
+        args = [
+            config.FFMPEG_PATH,
+            "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-ss", seek,
+            "-i", input_path,
+            "-frames:v", "1",
+            "-vf", "scale=112:63:force_original_aspect_ratio=increase,crop=112:63",
+            "-q:v", "5", "-y", thumb_path,
+        ]
+        try:
+            result = _run(args, timeout=60)
+        except EngineError:
+            continue
+        if result.returncode == 0 and Path(thumb_path).exists():
+            return True
+    return False
 
 
 class Process:
