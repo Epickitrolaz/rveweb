@@ -250,7 +250,10 @@ def mux_audio(
         args += ["-an"]
     args += ["-c:v", "copy"]
     if has_audio:
-        args += ["-shortest"]
+        try:
+            args += ["-t", f"{probe_video(video_path)['duration']:.3f}"]
+        except EngineError:
+            args += ["-shortest"]
     args += ["-y", output_path]
 
     result = _run(args, timeout=1800)
@@ -262,8 +265,12 @@ def mux_audio(
             "-i", video_path, "-i", source_path,
             "-map", "0:v:0", "-map", "1:a:0?",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-            "-shortest", "-y", output_path,
         ]
+        try:
+            retry += ["-t", f"{probe_video(video_path)['duration']:.3f}"]
+        except EngineError:
+            retry += ["-shortest"]
+        retry += ["-y", output_path]
         result = _run(retry, timeout=1800)
     if result.returncode != 0:
         detail = (result.stderr or "").strip().splitlines()

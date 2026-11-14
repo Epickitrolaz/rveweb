@@ -55,6 +55,7 @@ GPU_DEVICE = _env_int("GPU_DEVICE", 0, 0)
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+MAX_OUTPUT_PIXELS = _env_int("MAX_OUTPUT_PIXELS", 3840 * 2160, 1)
 ALLOWED_EXTENSIONS = {
     ".mp4", ".m4v", ".mkv", ".mov", ".webm", ".avi", ".wmv", ".flv",
     ".mpg", ".mpeg", ".ts", ".m2ts", ".ogv", ".3gp",

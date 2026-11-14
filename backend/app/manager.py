@@ -207,13 +207,15 @@ class JobManager:
                     )
                 else:
                     tail = self._read_tail(running.log_path)
-                    message = "The processing worker stopped unexpectedly."
                     if tail:
-                        message += " " + tail
+                        log.error("job %s worker log tail: %s", job_id, tail)
                     self.db.update_job(
                         job_id,
                         status="failed",
-                        error=message[-1200:],
+                        error=(
+                            "The processing worker stopped unexpectedly. "
+                            "The station logged the failure for the operator."
+                        ),
                         eta_seconds=None,
                         completed_at=time.time(),
                     )

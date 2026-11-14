@@ -134,6 +134,7 @@ def system_info(queue: dict[str, int]) -> dict:
             "maxUploadMb": config.MAX_UPLOAD_MB,
             "minFreeGb": config.MIN_FREE_GB,
             "retentionHours": config.RETENTION_HOURS,
+            "maxOutputPixels": config.MAX_OUTPUT_PIXELS,
         },
         "version": config.VERSION,
     }

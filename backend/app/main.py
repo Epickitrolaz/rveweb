@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import secrets
@@ -28,8 +27,6 @@ from .schemas import parse_settings
 from .system import system_info, uptime_seconds
 
 log = logging.getLogger("rveweb.api")
-
-ALLOWED_CONTENT_PREFIX = "video/"
 
 
 @asynccontextmanager
@@ -155,10 +152,6 @@ async def api_create_job(
             status_code=415,
             detail="Unsupported file type. Use MP4, MKV, MOV, WebM, AVI, or another common video format.",
         )
-    if file.content_type and not (
-        file.content_type.startswith(ALLOWED_CONTENT_PREFIX) or file.content_type == "application/octet-stream"
-    ):
-        raise HTTPException(status_code=415, detail="This file does not look like a video upload.")
 
     semaphore: asyncio.Semaphore = request.app.state.upload_sem
     if semaphore.locked():
@@ -195,6 +188,7 @@ async def api_create_job(
                 meta = await run_in_threadpool(probe_video, str(staged_file))
             except EngineError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
+            _validate_output_size(meta, parsed)
 
             thumb_path = staging / "thumb.jpg"
             has_thumb = await run_in_threadpool(make_thumbnail, str(staged_file), str(thumb_path))
@@ -305,6 +299,25 @@ def _require_disk_space() -> None:
                 f"{config.MIN_FREE_GB:.0f} GB is required. Remove old jobs and retry."
             ),
         )
+
+
+def _validate_output_size(meta: dict[str, Any], settings) -> None:
+    scale = settings.upscale.scale if settings.upscale.enabled else 1
+    width = int(meta["width"]) * scale
+    height = int(meta["height"]) * scale
+    if width * height > config.MAX_OUTPUT_PIXELS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"The projected output is {width}×{height}, above the 3840×2160 "
+                "stability limit. Use a smaller scale or a smaller source."
+            ),
+        )
+
+
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def api_unknown(path: str):
+    raise HTTPException(status_code=404, detail="API endpoint not found")
 
 
 # The console is served last so /api and /health always win route resolution.
