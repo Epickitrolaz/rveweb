@@ -93,6 +93,7 @@ Environment variables (all optional):
 | `RIFE_THREADS` | `4` | ONNX Runtime intra-op threads |
 | `FFMPEG_THREADS` | `2` | Encoder/decoder threads |
 | `GPU_DEVICE` | `0` | ncnn Vulkan device index |
+| `MAX_OUTPUT_PIXELS` | `8294400` | Projected output cap (4K) |
 | `JOB_TIMEOUT_MIN/MAX` | `900/10800` | Absolute job watchdog, seconds |
 
 ## Operations
@@ -138,7 +139,7 @@ cd backend
 DATA_DIR=./data MODEL_DIR=./models FRONTEND_DIR=../frontend \
   uvicorn app.main:app --reload --port 8080
 
-# frontend is static: open frontend/index.html or serve it
+# frontend is static: serve it over HTTP (ES modules do not load from file://)
 python3 -m http.server 5173 --directory frontend
 ```
 

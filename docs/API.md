@@ -19,7 +19,7 @@ code.
   "cpu": { "cores": 4, "load1": 0.42 },
   "memory": { "totalMb": 8192, "availableMb": 6120 },
   "storage": { "freeGb": 12.8 },
-  "queue": { "active": 1, "queued": 2, "maxActive": 1, "maxQueue": 50 },
+  "queue": { "active": 1, "queued": 2, "maxActive": 1, "maxQueue": 25 },
   "limits": { "maxUploadMb": 1024, "minFreeGb": 3, "retentionHours": 72, "maxOutputPixels": 8294400 },
   "models": {
     "upscalers": [
@@ -95,7 +95,7 @@ Returns `201` with the job object. Possible errors:
 
 ### `GET /api/jobs?limit=20`
 ```json
-{ "jobs": [ /* newest first */ ], "queue": { "active": 1, "queued": 2, "maxActive": 1, "maxQueue": 50 } }
+{ "jobs": [ /* newest first */ ], "queue": { "active": 1, "queued": 2, "maxActive": 1, "maxQueue": 25 } }
 ```
 
 ### `GET /api/jobs/{id}`
