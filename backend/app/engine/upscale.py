@@ -123,8 +123,8 @@ class Upscaler:
 
     def upscale(self, frame: np.ndarray) -> np.ndarray:
         height, width = frame.shape[:2]
-        target_w = max(2, int(round(width * self.scale / 2.0)) * 2)
-        target_h = max(2, int(round(height * self.scale / 2.0)) * 2)
+        target_w = max(2, ((width * self.scale + 1) // 2) * 2)
+        target_h = max(2, ((height * self.scale + 1) // 2) * 2)
 
         if self._net is None:
             return cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)

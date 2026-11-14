@@ -77,18 +77,33 @@ class FilterTests(unittest.TestCase):
         self.assertIn("deblock=filter=strong", filtergraph)
         self.assertNotIn("dering", filtergraph)
 
+    def test_odd_dimensions_are_padded_not_cropped(self):
+        from app.engine.ffmpeg import build_encode_command
+
+        command = build_encode_command(321, 181, 24.0, JobSettings(), "/tmp/out.mp4")
+        joined = " ".join(command)
+        self.assertIn("pad=ceil(iw/2)*2:ceil(ih/2)*2", joined)
+        self.assertNotIn("trunc(iw/2)*2", joined)
+
 
 class DatabaseTests(unittest.TestCase):
     def setUp(self):
         self.db = Database(Path(tempfile.mkdtemp(prefix="rveweb-db-")) / "test.sqlite3")
 
-    def _job(self):
+    def _job(self, max_queue: int | None = None):
         return self.db.create_job(
             source={"name": "clip.mp4", "width": 320, "height": 180, "fps": 24, "duration": 1},
             settings=JobSettings().model_dump(),
             input_path=str(Path(_TMP) / "job" / "input.mp4"),
             thumb_path=None,
+            max_queue=max_queue,
         )
+
+    def test_queue_admission_is_atomic(self):
+        first = self._job(max_queue=1)
+        self.assertIsNotNone(first)
+        self.assertIsNone(self._job(max_queue=1))
+        self.assertEqual(self.db.queue_counts(), {"active": 0, "queued": 1})
 
     def test_create_and_public(self):
         job = self._job()
@@ -116,6 +131,25 @@ class DatabaseTests(unittest.TestCase):
         self.db.update_job(job["id"], status="cancelled", completed_at=1.0)
         self.assertEqual(self.db.queue_counts(), {"active": 0, "queued": 0})
         self.assertEqual(len(self.db.cleanup_expired(0)), 1)
+
+    def test_queue_capacity_is_atomic(self):
+        first = self.db.create_job(
+            source={"name": "a.mp4"},
+            settings=JobSettings().model_dump(),
+            input_path=str(Path(_TMP) / "a" / "input.mp4"),
+            thumb_path=None,
+            max_queue=1,
+        )
+        self.assertIsNotNone(first)
+        second = self.db.create_job(
+            source={"name": "b.mp4"},
+            settings=JobSettings().model_dump(),
+            input_path=str(Path(_TMP) / "b" / "input.mp4"),
+            thumb_path=None,
+            max_queue=1,
+        )
+        self.assertIsNone(second)
+        self.assertEqual(self.db.queue_counts(), {"active": 0, "queued": 1})
 
     def test_recover_interrupted(self):
         self._job()

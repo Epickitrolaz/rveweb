@@ -210,7 +210,17 @@ async def api_create_job(
                 input_path=str(final_input),
                 thumb_path=str(final_thumb) if final_thumb else None,
                 job_id=job_id,
+                max_queue=config.MAX_QUEUE,
             )
+            if job is None:
+                shutil.rmtree(final_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=429,
+                    detail=(
+                        f"The queue is full ({config.MAX_QUEUE} waiting). "
+                        "Let a job finish, then try again."
+                    ),
+                )
             log.info(
                 "accepted job %s (%s, %.1f MB, %dx%d@%.2f)",
                 job_id, original_name, total / 1e6, meta["width"], meta["height"], meta["fps"],

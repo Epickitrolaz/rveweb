@@ -217,7 +217,7 @@ def build_encode_command(
         "-threads", str(config.FFMPEG_THREADS),
     ]
     if width % 2 or height % 2:
-        args += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
+        args += ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"]
     if settings.encode.codec == "h265" and settings.encode.container == "mp4":
         args += ["-tag:v", "hvc1"]
     if settings.encode.container == "mp4":

@@ -1173,10 +1173,10 @@ function projectedOutputSize() {
   const scale = settings.upscale.enabled ? settings.upscale.scale : 1;
   const width = settings.upscale.enabled
     ? Math.max(2, Math.round((source.width * scale) / 2) * 2)
-    : source.width;
+    : Math.max(2, Math.ceil(source.width / 2) * 2);
   const height = settings.upscale.enabled
     ? Math.max(2, Math.round((source.height * scale) / 2) * 2)
-    : source.height;
+    : Math.max(2, Math.ceil(source.height / 2) * 2);
   return { width, height, pixels: width * height };
 }
 
@@ -1487,10 +1487,10 @@ function updateProjection() {
   const scaleFactor = settings.upscale.enabled ? settings.upscale.scale : 1;
   const outputWidth = settings.upscale.enabled
     ? Math.max(2, Math.round((source.width * scaleFactor) / 2) * 2)
-    : source.width;
+    : Math.max(2, Math.ceil(source.width / 2) * 2);
   const outputHeight = settings.upscale.enabled
     ? Math.max(2, Math.round((source.height * scaleFactor) / 2) * 2)
-    : source.height;
+    : Math.max(2, Math.ceil(source.height / 2) * 2);
 
   const inputFps = source.fps;
   const outputFps = inputFps
@@ -1518,7 +1518,10 @@ function updateProjection() {
       els.projNote.textContent = `RIFE runs at up to ${settings.interpolate.maxHeight}p, then the frame is scaled to the projection.`;
     }
   } else if (!settings.upscale.enabled) {
-    els.projNote.textContent = 'No scaling or frame generation. The clip is re-encoded only.';
+    const padded = source.width % 2 !== 0 || source.height % 2 !== 0;
+    els.projNote.textContent = padded
+      ? 'No scaling or frame generation. Odd source dimensions are padded by 1 px so H.264 output stays even.'
+      : 'No scaling or frame generation. The clip is re-encoded only.';
   } else {
     els.projNote.textContent = `Upscale pass ×${settings.upscale.scale}. Output width is rounded to an even number.`;
   }

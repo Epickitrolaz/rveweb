@@ -28,10 +28,12 @@ services:
       RIFE_THREADS: "4"
       LOG_LEVEL: "INFO"
     shm_size: "256m"
+    init: true
     stop_grace_period: 30s
     cpus: 3.5
     mem_limit: 7g
     pids_limit: 512
+    init: true
     security_opt:
       - "no-new-privileges:true"
     healthcheck:

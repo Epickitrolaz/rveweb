@@ -79,30 +79,40 @@ class Database:
         input_path: str,
         thumb_path: str | None,
         job_id: str | None = None,
-    ) -> dict[str, Any]:
+        max_queue: int | None = None,
+    ) -> dict[str, Any] | None:
         job_id = job_id or ("j_" + secrets.token_hex(6))
         now = time.time()
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            conn.execute(
-                """INSERT INTO jobs
-                   (id, status, stage, progress, source_json, settings_json, input_path,
-                    thumb_path, created_at, updated_at)
-                   VALUES (?, 'queued', 'queued', 0, ?, ?, ?, ?, ?, ?)""",
-                (
-                    job_id,
-                    json.dumps(source, separators=(",", ":")),
-                    json.dumps(settings, separators=(",", ":")),
-                    input_path,
-                    thumb_path,
-                    now,
-                    now,
-                ),
-            )
-            conn.execute("COMMIT")
-        job = self.get_job(job_id)
-        assert job is not None
-        return job
+            try:
+                if max_queue is not None:
+                    waiting = conn.execute(
+                        "SELECT COUNT(*) FROM jobs WHERE status = 'queued'"
+                    ).fetchone()[0]
+                    if waiting >= max_queue:
+                        conn.execute("ROLLBACK")
+                        return None
+                conn.execute(
+                    """INSERT INTO jobs
+                       (id, status, stage, progress, source_json, settings_json, input_path,
+                        thumb_path, created_at, updated_at)
+                       VALUES (?, 'queued', 'queued', 0, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        job_id,
+                        json.dumps(source, separators=(",", ":")),
+                        json.dumps(settings, separators=(",", ":")),
+                        input_path,
+                        thumb_path,
+                        now,
+                        now,
+                    ),
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        return self.get_job(job_id)
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self.connect() as conn:

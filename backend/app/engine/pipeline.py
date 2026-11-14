@@ -35,7 +35,7 @@ CancelCallback = Callable[[], bool]
 
 
 def _even(value: int) -> int:
-    return max(2, int(round(value / 2.0)) * 2)
+    return max(2, ((value + 1) // 2) * 2)
 
 
 class Pipeline:

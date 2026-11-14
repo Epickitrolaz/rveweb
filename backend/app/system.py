@@ -57,9 +57,10 @@ def gpu_info() -> dict:
             ]
             if physical:
                 info["name"] = physical[0].get("deviceName", info["name"])
-                info["backend"] = physical[0].get("driverName", "vulkan").lower()
+                info["driver"] = physical[0].get("driverName", "").lower()
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("vulkaninfo unavailable: %s", exc)
+    info["backend"] = "vulkan"
     return info
 
 

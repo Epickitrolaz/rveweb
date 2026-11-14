@@ -187,6 +187,10 @@ class JobManager:
             if code is None:
                 continue
 
+            # The worker leads its own session. If it died without reaping ffmpeg,
+            # kill any survivors in that process group before forgetting the job.
+            self._kill_group_pid(running.process.pid)
+
             current = self.db.get_job(job_id)
             if current is not None and current["status"] in ACTIVE_STATUSES:
                 if running.kill_reason == "cancelled" or current["status"] == "cancel_requested":
@@ -231,6 +235,13 @@ class JobManager:
             return " ".join(data.decode("utf-8", "replace").split())
         except OSError:
             return ""
+
+    @staticmethod
+    def _kill_group_pid(pid: int) -> None:
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
 
     @staticmethod
     def _signal_group(running: RunningJob, sig: int) -> None:
