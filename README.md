@@ -66,8 +66,9 @@ http://10.0.0.121:8080/api/docs
 curl http://10.0.0.121:8080/health
 ```
 
-The image downloads and verifies pinned models during build (~70 MB). No model download
-happens at runtime.
+The image downloads and verifies pinned models during build (~180 MB): RIFE 4.27 ONNX,
+older RIFE 4.6–4.26 Vulkan models, and Real-ESRGAN ncnn models. No model download happens at
+runtime.
 
 ### Requirements
 
