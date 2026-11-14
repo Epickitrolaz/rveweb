@@ -154,7 +154,9 @@ class Pipeline:
                         "Choose RIFE 4.26 or older, or switch to Auto."
                     )
                 self.interpolator = RifeInterpolator(
-                    settings.interpolate.model, max_height=settings.interpolate.maxHeight
+                    settings.interpolate.model,
+                    mode=mode,
+                    max_height=settings.interpolate.maxHeight,
                 )
         if settings.upscale.enabled:
             self.upscaler = Upscaler(

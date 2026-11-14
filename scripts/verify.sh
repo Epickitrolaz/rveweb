@@ -21,6 +21,8 @@ print("cpu:", d["cpu"], "memory:", d["memory"], "storage:", d["storage"])
 assert d["models"]["interpolators"], "no interpolators advertised"
 assert any(m["id"]=="rife-4.27" for m in d["models"]["interpolators"]), "RIFE 4.27 missing"
 '
+MODE="$(curl -fsS "$BASE/api/settings" | python3 -c 'import sys,json;print(json.load(sys.stdin)["processingMode"])')"
+echo "station processing mode: $MODE"
 
 say "create a 2 s test clip"
 docker exec "$CONTAINER" ffmpeg -hide_banner -loglevel error \
@@ -31,7 +33,28 @@ docker exec "$CONTAINER" ffmpeg -hide_banner -loglevel error \
 docker cp "$CONTAINER:/tmp/verify-input.mp4" "$WORK/input.mp4" >/dev/null
 ls -l "$WORK/input.mp4"
 
-SETTINGS='{"upscale":{"enabled":true,"model":"realesrgan-video","scale":2},"interpolate":{"enabled":true,"model":"rife-4.27","factor":2,"maxHeight":1080},"denoise":{"enabled":true,"strength":"medium"},"decompress":{"enabled":true,"strength":"strong"},"encode":{"codec":"h264","crf":20,"preset":"veryfast","container":"mp4"},"audio":{"mode":"copy"}}'
+SETTINGS="$(python3 - "$MODE" <<'PY'
+import json, sys
+mode = sys.argv[1]
+if mode == "gpu":
+    upscale = {"enabled": True, "model": "realesrgan-video", "scale": 2}
+    interp = {"enabled": True, "model": "rife-4.26", "factor": 2, "maxHeight": 1080}
+elif mode == "cpu":
+    upscale = {"enabled": True, "model": "lanczos", "scale": 2}
+    interp = {"enabled": True, "model": "rife-4.27", "factor": 2, "maxHeight": 1080}
+else:
+    upscale = {"enabled": True, "model": "realesrgan-video", "scale": 2}
+    interp = {"enabled": True, "model": "rife-4.27", "factor": 2, "maxHeight": 1080}
+print(json.dumps({
+    "upscale": upscale,
+    "interpolate": interp,
+    "denoise": {"enabled": True, "strength": "medium"},
+    "decompress": {"enabled": True, "strength": "strong"},
+    "encode": {"codec": "h264", "crf": 20, "preset": "veryfast", "container": "mp4"},
+    "audio": {"mode": "copy"},
+}))
+PY
+)"
 
 say "submit enhancement job"
 RESP="$(curl -fsS -X POST "$BASE/api/jobs" -F "file=@$WORK/input.mp4" -F "settings=$SETTINGS")"

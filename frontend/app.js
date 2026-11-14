@@ -646,6 +646,10 @@ function normalizeSystem(raw) {
       available: gpu.available === true,
       name: typeof gpu.name === 'string' ? gpu.name : '',
       backend: typeof gpu.backend === 'string' ? gpu.backend : '',
+      driver: typeof gpu.driver === 'string' ? gpu.driver : '',
+      cuda: gpu.cuda === true,
+      vulkan: gpu.vulkan === true,
+      cudaOnnx: gpu.cudaOnnx === true,
     },
     cpu: {
       cores: toNumber(cpu.cores),
@@ -2322,8 +2326,14 @@ function renderStationInfo() {
   const rows = [];
   if (system) {
     const gpu = system.gpu || {};
-    rows.push(['GPU', gpu.available ? gpu.name : 'No Vulkan device']);
-    if (gpu.available) rows.push(['AI backend', gpu.driver ? `Vulkan · ${gpu.driver}` : 'Vulkan']);
+    rows.push(['GPU', gpu.available ? gpu.name : 'No GPU']);
+    if (gpu.available) {
+      let backend = 'Unavailable';
+      if (gpu.cuda && gpu.vulkan) backend = 'CUDA + Vulkan';
+      else if (gpu.cuda) backend = 'CUDA';
+      else if (gpu.vulkan) backend = gpu.driver ? `Vulkan · ${gpu.driver}` : 'Vulkan';
+      rows.push(['AI backend', backend]);
+    }
     rows.push(['CPU', `${system.cpu?.cores ?? '—'} cores · load ${system.cpu?.load1 != null ? system.cpu.load1.toFixed(2) : '—'}`]);
     rows.push(['Memory', system.memory ? `${system.memory.availableMb} MB free of ${system.memory.totalMb} MB` : '—']);
     rows.push(['Storage', system.storage ? `${system.storage.freeGb} GB free` : '—']);

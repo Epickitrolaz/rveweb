@@ -19,15 +19,31 @@ _started_at = time.monotonic()
 
 
 @lru_cache(maxsize=1)
-def gpu_info() -> dict:
-    nodes = glob.glob("/dev/dri/renderD*")
-    info = {"available": False, "name": "No GPU", "backend": "none"}
-    if not nodes:
-        return info
+def _nvidia_info() -> dict | None:
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        result = subprocess.run(
+            [smi, "--query-gpu=name,driver_version", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        line = (result.stdout or "").strip().splitlines()[0] if result.stdout else ""
+        if result.returncode != 0 or not line:
+            return None
+        name, _, driver = line.partition(",")
+        return {"name": name.strip() or "NVIDIA GPU", "driver": driver.strip()}
+    except (OSError, subprocess.SubprocessError, IndexError) as exc:
+        log.debug("nvidia-smi unavailable: %s", exc)
+        return None
 
-    info["available"] = True
-    info["name"] = "Vulkan GPU"
-    info["backend"] = "vulkan"
+
+@lru_cache(maxsize=1)
+def _vulkan_info() -> dict:
+    info = {"available": False, "name": "Vulkan GPU", "driver": "", "index": 0}
     try:
         result = subprocess.run(
             ["vulkaninfo", "--summary"],
@@ -44,24 +60,76 @@ def gpu_info() -> dict:
                 if stripped.startswith("GPU") and stripped.endswith(":"):
                     if current:
                         devices.append(current)
-                    current = {}
+                    current = {"index": stripped[3:-1]}
                 elif "=" in stripped:
                     key, _, value = stripped.partition("=")
                     current[key.strip()] = value.strip()
             if current:
                 devices.append(current)
             physical = [
-                d for d in devices
-                if d.get("deviceType", "").startswith("PHYSICAL_DEVICE_TYPE")
-                and "CPU" not in d.get("deviceType", "")
+                device for device in devices
+                if device.get("deviceType", "").startswith("PHYSICAL_DEVICE_TYPE")
+                and "CPU" not in device.get("deviceType", "")
+                and "llvmpipe" not in device.get("deviceName", "").lower()
             ]
             if physical:
-                info["name"] = physical[0].get("deviceName", info["name"])
-                info["driver"] = physical[0].get("driverName", "").lower()
+                # Prefer a real hardware GPU with a vendor driver over any software fallback.
+                chosen = next(
+                    (d for d in physical if any(word in d.get("deviceName", "") for word in ("NVIDIA", "Tesla", "GeForce", "Quadro", "Radeon"))),
+                    physical[0],
+                )
+                info["available"] = True
+                info["name"] = chosen.get("deviceName", info["name"])
+                info["driver"] = chosen.get("driverName", "").lower()
+                try:
+                    info["index"] = int(chosen.get("index", "0"))
+                except ValueError:
+                    info["index"] = 0
+                return info
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("vulkaninfo unavailable: %s", exc)
-    info["backend"] = "vulkan"
+    if glob.glob("/dev/dri/renderD*"):
+        info["available"] = True
+        info["name"] = "Vulkan GPU"
     return info
+
+
+@lru_cache(maxsize=1)
+def cuda_onnx_available() -> bool:
+    try:
+        import onnxruntime as ort
+
+        return "CUDAExecutionProvider" in ort.get_available_providers()
+    except Exception:
+        return False
+
+
+@lru_cache(maxsize=1)
+def gpu_info() -> dict:
+    cuda = _nvidia_info()
+    vulkan = _vulkan_info()
+    if cuda:
+        name = cuda["name"]
+        backend = "cuda"
+        driver = cuda["driver"]
+    elif vulkan["available"]:
+        name = vulkan["name"]
+        backend = "vulkan"
+        driver = vulkan["driver"]
+    else:
+        name = "No GPU"
+        backend = "none"
+        driver = ""
+    return {
+        "available": bool(cuda or vulkan["available"]),
+        "name": name,
+        "backend": backend,
+        "driver": driver,
+        "cuda": bool(cuda),
+        "vulkan": bool(vulkan["available"]),
+        "cudaOnnx": bool(cuda and cuda_onnx_available()),
+        "vulkanIndex": int(vulkan.get("index", 0)),
+    }
 
 
 def _memory_mb() -> tuple[int, int]:

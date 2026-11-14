@@ -26,13 +26,22 @@ SCENE_CUT_THRESHOLD = 0.20
 
 
 class RifeInterpolator:
-    def __init__(self, model_id: str, *, max_height: int = 0, threads: int | None = None) -> None:
+    def __init__(
+        self,
+        model_id: str,
+        *,
+        mode: str = "auto",
+        max_height: int = 0,
+        threads: int | None = None,
+    ) -> None:
         spec = INTERPOLATORS.get(model_id)
         if spec is None:
             raise EngineError(f"unknown interpolation model: {model_id}")
         self.spec = spec
+        self.mode = mode
         self.max_height = max_height
         self.threads = threads or config.RIFE_THREADS
+        self.backend = "cpu-onnx"
         self._session = None
         self._input_name: str | None = None
         self._warm = False
@@ -60,21 +69,50 @@ class RifeInterpolator:
         options.enable_mem_pattern = True
         options.enable_cpu_mem_arena = True
 
+        providers = ["CPUExecutionProvider"]
+        if self.mode != "cpu":
+            try:
+                if "CUDAExecutionProvider" in ort.get_available_providers():
+                    providers.insert(0, "CUDAExecutionProvider")
+            except Exception:
+                pass
+
         started = time.monotonic()
         try:
             self._session = ort.InferenceSession(
                 str(model_path),
                 sess_options=options,
-                providers=["CPUExecutionProvider"],
+                providers=providers,
             )
         except Exception as exc:
-            raise EngineError(f"could not load the {self.spec.label} model: {exc}") from exc
+            if providers and providers[0] == "CUDAExecutionProvider" and self.mode != "gpu":
+                log.warning("CUDA ONNX session failed; falling back to CPU: %s", exc)
+                try:
+                    self._session = ort.InferenceSession(
+                        str(model_path),
+                        sess_options=options,
+                        providers=["CPUExecutionProvider"],
+                    )
+                except Exception as fallback_exc:
+                    raise EngineError(
+                        f"could not load the {self.spec.label} model: {fallback_exc}"
+                    ) from fallback_exc
+            else:
+                raise EngineError(f"could not load the {self.spec.label} model: {exc}") from exc
         self._input_name = self._session.get_inputs()[0].name
+        active = self._session.get_providers()
+        self.backend = "cuda-onnx" if "CUDAExecutionProvider" in active else "cpu-onnx"
+        if self.mode == "gpu" and self.backend != "cuda-onnx":
+            raise EngineError(
+                "GPU-only mode requested RIFE 4.27, but ONNX Runtime did not initialise CUDA. "
+                "Choose RIFE 4.26 or older, or switch to Auto."
+            )
         log.info(
-            "loaded %s in %.1fs (%d threads, CPU ONNX)",
+            "loaded %s in %.1fs (%s, %s)",
             self.spec.label,
             time.monotonic() - started,
-            self.threads,
+            self.backend,
+            "CUDA" if self.backend == "cuda-onnx" else f"{self.threads} CPU threads",
         )
 
     def _infer(self, a_bgr: np.ndarray, b_bgr: np.ndarray) -> np.ndarray:

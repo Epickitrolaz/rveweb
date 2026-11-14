@@ -530,19 +530,38 @@ def _prepare_settings(db: Database, raw: str):
 
 def _validate_processing_mode(parsed, mode: str) -> None:
     if mode == "gpu":
-        wants_ai = parsed.upscale.enabled or parsed.interpolate.enabled
-        if wants_ai and not gpu_info()["available"]:
-            raise HTTPException(status_code=422, detail="GPU-only mode is selected, but no Vulkan device is available.")
+        gpu = gpu_info()
         if parsed.upscale.enabled and parsed.upscale.model == "lanczos":
             raise HTTPException(
                 status_code=422,
                 detail="GPU-only mode requires an AI upscaler. Choose Real-ESRGAN or switch to Auto/CPU.",
             )
-        if parsed.interpolate.enabled and INTERPOLATORS[parsed.interpolate.model].backend != "gpu":
+        if parsed.upscale.enabled and not gpu.get("vulkan"):
             raise HTTPException(
                 status_code=422,
-                detail="GPU-only mode requires RIFE 4.26 or older (Vulkan). Choose a GPU model or switch to Auto.",
+                detail=(
+                    "GPU-only mode requires Vulkan for the Real-ESRGAN upscaler. "
+                    "Install the NVIDIA Vulkan driver or switch to Auto/CPU."
+                ),
             )
+        if parsed.interpolate.enabled:
+            spec = INTERPOLATORS[parsed.interpolate.model]
+            if spec.engine == "ncnn" and not gpu.get("vulkan"):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"GPU-only mode requires Vulkan for {spec.label}. "
+                        "Install the NVIDIA Vulkan driver or switch to Auto/CPU."
+                    ),
+                )
+            if spec.engine == "onnx" and not gpu.get("cudaOnnx"):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "GPU-only mode can run RIFE 4.27 only with CUDA ONNX Runtime. "
+                        "Choose RIFE 4.26 or older (Vulkan), or switch to Auto."
+                    ),
+                )
     elif mode == "cpu":
         if parsed.upscale.enabled and parsed.upscale.model != "lanczos":
             raise HTTPException(

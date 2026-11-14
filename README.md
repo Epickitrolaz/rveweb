@@ -34,7 +34,7 @@ iGPU** (RADV Vulkan). There is no NVIDIA/CUDA device. Concretely:
 | Stage | Device | Notes |
 |---|---|---|
 | Real-ESRGAN upscale | **GPU (Vulkan / ncnn)** | ~0.2 s per 256 px tile with the v3 video model |
-| RIFE 4.27 interpolation | **CPU (ONNX Runtime)** | ~0.2–0.8 s per frame at 180–360p |
+| RIFE 4.27 interpolation | **CPU (ONNX Runtime)** | ~0.2–0.8 s per frame at 180–360p; uses CUDA ONNX on a Colab T4 |
 | RIFE 4.6–4.26 interpolation | **GPU (Vulkan / ncnn)** | ~0.11 s per 640×360 pair; `GPU only` mode uses these |
 | Denoise / deblock / decode / encode | **CPU (FFmpeg)** | 2 threads each, leaving headroom for RIFE |
 
@@ -70,7 +70,25 @@ The image downloads and verifies pinned models during build (~180 MB): RIFE 4.27
 older RIFE 4.6–4.26 Vulkan models, and Real-ESRGAN ncnn models. No model download happens at
 runtime.
 
-### Requirements
+## Run on Google Colab (NVIDIA T4)
+
+A native notebook deployment is included:
+[`notebooks/RVEWeb_Colab_T4.ipynb`](notebooks/RVEWeb_Colab_T4.ipynb).
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Epickitrolaz/rveweb/blob/main/notebooks/RVEWeb_Colab_T4.ipynb)
+
+Select **Runtime → Change runtime type → T4 GPU**, then run all cells. The notebook:
+
+- installs FFmpeg and the NVIDIA Vulkan ICD and verifies `vulkaninfo` sees the T4;
+- installs `onnxruntime-gpu` so RIFE 4.27 uses CUDA;
+- downloads the pinned models and starts the app on port 8000;
+- runs a GPU smoke test that reports `upscaler: vulkan` and `interpolation: cuda-onnx`;
+- exposes the console through a Colab iframe and a Cloudflare quick-tunnel URL.
+
+No Docker is used. Colab storage is ephemeral and the public URL has no authentication, so
+stop the runtime when you are done.
+
+### Docker requirements
 
 - Docker with Compose v2.
 - `/dev/dri` passed through to the container and the render node group added in

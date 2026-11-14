@@ -14,7 +14,16 @@ Errors use `{ "detail": "human readable message" }` with an appropriate status c
 ### `GET /api/system`
 ```json
 {
-  "gpu": { "available": true, "name": "AMD Radeon Vega 11 Graphics (RADV RAVEN)", "backend": "vulkan", "driver": "radv" },
+  "gpu": {
+    "available": true,
+    "name": "AMD Radeon Vega 11 Graphics (RADV RAVEN)",
+    "backend": "vulkan",
+    "driver": "radv",
+    "cuda": false,
+    "vulkan": true,
+    "cudaOnnx": false,
+    "vulkanIndex": 0
+  },
   "cpu": { "cores": 4, "load1": 0.42 },
   "memory": { "totalMb": 7168, "availableMb": 6120 },
   "storage": { "freeGb": 12.8 },
@@ -40,10 +49,15 @@ Errors use `{ "detail": "human readable message" }` with an appropriate status c
 
 A station-wide mode applies to every new job. It is stored in Settings, not chosen per job.
 
+`gpu.backend` is `"cuda"` when `nvidia-smi` is present, otherwise `"vulkan"`. `gpu.cuda`
+and `gpu.vulkan` report each runtime independently. `gpu.cudaOnnx` means ONNX Runtime was
+built with the CUDA provider (used by RIFE 4.27 on a T4). `gpu.vulkanIndex` is the Vulkan
+device index to use for ncnn.
+
 | Mode | Upscale | Interpolation |
 |---|---|---|
-| `auto` | Vulkan Real-ESRGAN if available, Lanczos fallback | RIFE 4.27 CPU ONNX, or older RIFE on Vulkan |
-| `gpu` | Required Vulkan Real-ESRGAN (Lanczos rejected) | Required Vulkan RIFE 4.26 or older (RIFE 4.27 rejected) |
+| `auto` | Vulkan Real-ESRGAN if available, Lanczos fallback | RIFE 4.27 CUDA ONNX if available, otherwise CPU; older RIFE on Vulkan when available |
+| `gpu` | Required Vulkan Real-ESRGAN (Lanczos rejected) | RIFE 4.26 or older on Vulkan, or RIFE 4.27 with CUDA ONNX; unavailable without the matching backend |
 | `cpu` | Lanczos only (AI models rejected) | CPU RIFE (4.27 ONNX or older ncnn) |
 
 FFmpeg decode, denoise/deblock filters, and encode always use the CPU. `gpu` means

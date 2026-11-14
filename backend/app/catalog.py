@@ -66,11 +66,11 @@ UPSCALERS: dict[str, UpscalerSpec] = {
 
 INTERPOLATORS: dict[str, InterpolatorSpec] = {
     "rife-4.27": InterpolatorSpec(
-        id="rife-4.27", label="RIFE 4.27", note="Quality · CPU ONNX",
+        id="rife-4.27", label="RIFE 4.27", note="Quality · ONNX (CPU/CUDA)",
         factors=(2, 4, 8), engine="onnx", backend="cpu", onnx_file="RIFE_fp32.onnx",
     ),
     "rife-4.27-s": InterpolatorSpec(
-        id="rife-4.27-s", label="RIFE 4.27 Small", note="Lighter · CPU ONNX",
+        id="rife-4.27-s", label="RIFE 4.27 Small", note="Lighter · ONNX (CPU/CUDA)",
         factors=(2, 4, 8), engine="onnx", backend="cpu", onnx_file="RIFE_s_fp32.onnx",
     ),
     "rife-4.26": InterpolatorSpec(
