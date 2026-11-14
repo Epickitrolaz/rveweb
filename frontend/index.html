@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>RVEWeb · video restoration station</title>
+  <meta name="description" content="RVEWeb is a local video restoration station. Decompress, denoise, upscale, interpolate, and encode clips on your own hardware.">
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#console">Skip to console</a>
+
+  <header class="masthead">
+    <div class="masthead-inner shell">
+      <div class="brand">
+        <h1 class="wordmark" aria-label="RVE/WEB"><span aria-hidden="true">RVE</span><span class="slash" aria-hidden="true">/</span><span aria-hidden="true">WEB</span></h1>
+        <p class="tagline">video restoration station</p>
+      </div>
+
+      <div class="sys-strip" id="sysStrip" role="group" aria-label="Station status">
+        <span class="sys-item">
+          <span class="dot dot-ok" id="gpuDot" aria-hidden="true"></span>
+          <span class="sys-key">GPU</span>
+          <span class="sys-value" id="gpuValue" title="Checking the station">Checking…</span>
+        </span>
+        <span class="sys-item">
+          <span class="dot" id="cpuDot" aria-hidden="true"></span>
+          <span class="sys-key">CPU</span>
+          <span class="sys-value" id="cpuValue">—</span>
+        </span>
+        <span class="sys-item">
+          <span class="dot" id="queueDot" aria-hidden="true"></span>
+          <span class="sys-key">Queue</span>
+          <span class="sys-value" id="queueValue">—</span>
+        </span>
+      </div>
+
+      <button type="button" class="link-btn" id="howToggle" aria-expanded="false" aria-controls="howPanel">How it works</button>
+    </div>
+
+    <div class="how-panel shell" id="howPanel" hidden>
+      <p>Five stages run in order: decompress, denoise, upscale, interpolate, then encode. The projection above shows the exact frame size and rate before you commit. Everything runs on this station — clips never leave your network.</p>
+    </div>
+  </header>
+
+  <main class="workspace shell" id="console">
+    <section class="column source-column" aria-labelledby="sourceTitle">
+      <div class="section-head">
+        <h2 id="sourceTitle">Source</h2>
+        <span class="head-meta" id="sourceBadge">No clip</span>
+      </div>
+
+      <div class="source-frame" id="sourceFrame">
+        <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Choose a video file to enhance" aria-describedby="sourceHint sourceFormats">
+          <span class="sprockets" aria-hidden="true"></span>
+          <div class="drop-empty" id="dropEmpty">
+            <svg class="film-icon" viewBox="0 0 34 26" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true">
+              <rect x="1" y="1" width="32" height="24"></rect>
+              <path d="M8.5 1v24M25.5 1v24M1 6.5h7.5M1 13h7.5M1 19.5h7.5M25.5 6.5H33M25.5 13H33M25.5 19.5H33"></path>
+            </svg>
+            <p class="drop-title">Drop a video here, or <span class="drop-choose">choose a file</span></p>
+            <p class="drop-hint" id="sourceHint">MP4, MKV, MOV, WebM, AVI, or M4V</p>
+            <p class="drop-limit mono" id="sourceFormats">Up to 1.0 GB per clip</p>
+          </div>
+          <div class="drop-dragging" aria-hidden="true"><span>Drop to load</span></div>
+        </div>
+
+        <div class="preview-wrap" id="previewWrap" hidden>
+          <video id="videoPreview" muted controls playsinline preload="metadata"></video>
+          <button type="button" class="preview-replace" id="replaceBtn">Replace</button>
+        </div>
+      </div>
+
+      <input type="file" id="fileInput" accept="video/*,.mkv,.avi,.m4v" hidden>
+
+      <p class="source-error" id="sourceError" role="alert" tabindex="-1" hidden></p>
+
+      <div class="source-meta mono" id="sourceMeta" hidden>
+        <span class="source-name" id="sourceName"></span>
+        <span class="meta-dot" aria-hidden="true">·</span>
+        <span id="sourceDims"></span>
+        <span class="meta-dot" aria-hidden="true">·</span>
+        <span id="sourceFps"></span>
+        <span class="meta-dot" aria-hidden="true">·</span>
+        <span id="sourceDuration"></span>
+        <span class="meta-dot" aria-hidden="true">·</span>
+        <span id="sourceSize"></span>
+      </div>
+      <p class="source-note" id="sourceNote" hidden></p>
+
+      <section class="projection" aria-labelledby="projectionTitle">
+        <div class="projection-head">
+          <h2 id="projectionTitle">Output projection</h2>
+          <span class="head-meta" id="projRatio"></span>
+        </div>
+        <p class="equation" id="projectionEq" aria-hidden="true">
+          <span class="eq-from" id="projFrom">— × —</span>
+          <span class="eq-arrow">→</span>
+          <span class="eq-to" id="projTo">— × —</span>
+        </p>
+        <p class="projection-sub mono" id="projSub">— fps · —</p>
+        <p class="projection-note" id="projNote">Load a clip to project the output.</p>
+        <p class="sr-only" id="projectionSr">No source clip selected.</p>
+      </section>
+
+      <section class="chain" aria-labelledby="chainTitle">
+        <div class="chain-head">
+          <h2 id="chainTitle">Signal chain</h2>
+          <div class="presets" role="group" aria-label="Signal chain presets">
+            <span class="preset-label">Presets</span>
+            <button type="button" class="preset-btn" data-preset="restore" title="Decompress light, denoise medium, upscale 2×">Restore</button>
+            <button type="button" class="preset-btn" data-preset="smooth" title="RIFE 4.27 at 2×, motion only">Smooth</button>
+            <button type="button" class="preset-btn" data-preset="max" title="Upscale 4×, RIFE 4×, light denoise">Max</button>
+          </div>
+        </div>
+
+        <div class="stages">
+          <div class="stage" data-stage="decompress">
+            <div class="stage-main">
+              <div class="stage-id">
+                <span class="stage-name" id="stage-decompress-name">Decompress</span>
+                <span class="stage-purpose">Reverses block and ringing artifacts from heavy compression.</span>
+              </div>
+              <div class="stage-controls">
+                <div class="stage-options" data-options="decompress" hidden>
+                  <label class="field">
+                    <span class="field-label">Strength</span>
+                    <select id="decompressStrength">
+                      <option value="light">Light</option>
+                      <option value="strong">Strong</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="switch-wrap" data-switch-wrap="decompress">
+                  <span class="switch-state" data-switch-state="decompress" aria-hidden="true">Off</span>
+                  <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="stage-decompress-name" data-toggle="decompress">
+                    <span class="switch-thumb" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" data-stage="denoise">
+            <div class="stage-main">
+              <div class="stage-id">
+                <span class="stage-name" id="stage-denoise-name">Denoise</span>
+                <span class="stage-purpose">Removes sensor noise and film grain before scaling.</span>
+              </div>
+              <div class="stage-controls">
+                <div class="stage-options" data-options="denoise" hidden>
+                  <label class="field">
+                    <span class="field-label">Strength</span>
+                    <select id="denoiseStrength">
+                      <option value="light">Light</option>
+                      <option value="medium">Medium</option>
+                      <option value="strong">Strong</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="switch-wrap" data-switch-wrap="denoise">
+                  <span class="switch-state" data-switch-state="denoise" aria-hidden="true">Off</span>
+                  <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="stage-denoise-name" data-toggle="denoise">
+                    <span class="switch-thumb" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" data-stage="upscale">
+            <div class="stage-main">
+              <div class="stage-id">
+                <span class="stage-name" id="stage-upscale-name">Upscale</span>
+                <span class="stage-purpose">Rebuilds detail with Real-ESRGAN.</span>
+                <span class="stage-note" id="gpuNote" hidden>GPU unavailable. Upscaling will run on the CPU and be much slower.</span>
+              </div>
+              <div class="stage-controls">
+                <div class="stage-options" data-options="upscale" hidden>
+                  <label class="field">
+                    <span class="field-label">Model</span>
+                    <select id="upscaleModel"></select>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Scale</span>
+                    <select id="upscaleScale"></select>
+                  </label>
+                </div>
+                <div class="switch-wrap" data-switch-wrap="upscale">
+                  <span class="switch-state" data-switch-state="upscale" aria-hidden="true">Off</span>
+                  <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="stage-upscale-name" data-toggle="upscale">
+                    <span class="switch-thumb" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" data-stage="interpolate">
+            <div class="stage-main">
+              <div class="stage-id">
+                <span class="stage-name" id="stage-interpolate-name">Interpolate</span>
+                <span class="stage-purpose">Generates in-between frames with RIFE.</span>
+              </div>
+              <div class="stage-controls">
+                <div class="stage-options" data-options="interpolate" hidden>
+                  <label class="field">
+                    <span class="field-label">Model</span>
+                    <select id="interpolateModel"></select>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Factor</span>
+                    <select id="interpolateFactor"></select>
+                  </label>
+                  <details class="adv">
+                    <summary>Advanced</summary>
+                    <div class="adv-body">
+                      <label class="field">
+                        <span class="field-label">AI height</span>
+                        <select id="interpolateMaxHeight">
+                          <option value="1080">Auto · 1080p</option>
+                          <option value="480">480p</option>
+                          <option value="720">720p</option>
+                          <option value="2160">2160p</option>
+                          <option value="0">Full · native</option>
+                        </select>
+                      </label>
+                    </div>
+                  </details>
+                </div>
+                <div class="switch-wrap" data-switch-wrap="interpolate">
+                  <span class="switch-state" data-switch-state="interpolate" aria-hidden="true">Off</span>
+                  <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="stage-interpolate-name" data-toggle="interpolate">
+                    <span class="switch-thumb" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage is-on" data-stage="encode">
+            <div class="stage-main">
+              <div class="stage-id">
+                <span class="stage-name" id="stage-encode-name">Encode</span>
+                <span class="stage-purpose">Writes the finished clip with x264 or x265.</span>
+              </div>
+              <div class="stage-controls">
+                <div class="stage-options">
+                  <label class="field">
+                    <span class="field-label">Codec</span>
+                    <select id="encodeCodec">
+                      <option value="h264">H.264</option>
+                      <option value="h265">H.265</option>
+                    </select>
+                  </label>
+                  <div class="field field-crf">
+                    <span class="field-label"><span>Quality</span><span class="field-value mono" id="crfValue">CRF 18</span></span>
+                    <input type="range" id="crfInput" min="14" max="28" step="1" value="18" aria-label="Quality, CRF 18">
+                    <span class="crf-scale" aria-hidden="true"><span>← Better</span><span>Smaller →</span></span>
+                  </div>
+                  <label class="field">
+                    <span class="field-label">Container</span>
+                    <select id="encodeContainer">
+                      <option value="mp4">MP4</option>
+                      <option value="mkv">MKV</option>
+                    </select>
+                  </label>
+                  <details class="adv">
+                    <summary>Advanced</summary>
+                    <div class="adv-body">
+                      <label class="field">
+                        <span class="field-label">Encoder preset</span>
+                        <select id="encodePreset">
+                          <option value="veryfast">Very fast</option>
+                          <option value="fast">Fast</option>
+                          <option value="medium">Medium</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="field-label">Audio</span>
+                        <select id="audioMode">
+                          <option value="copy">Copy audio</option>
+                          <option value="none">No audio</option>
+                        </select>
+                      </label>
+                    </div>
+                  </details>
+                </div>
+                <div class="switch-wrap is-on is-fixed">
+                  <span class="switch-state" aria-hidden="true">On</span>
+                  <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Encode is always on" disabled>
+                    <span class="switch-thumb" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cta">
+          <div class="cta-actions">
+            <button type="button" class="btn-primary" id="startButton" disabled>Start enhancement</button>
+            <button type="button" class="btn-ghost" id="resetButton">Reset</button>
+          </div>
+          <div class="upload-track" id="uploadTrack" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+            <span class="upload-fill" id="uploadFill"></span>
+          </div>
+          <p class="cta-note" id="ctaNote">Choose a clip to begin.</p>
+          <p class="cta-error" id="ctaError" role="alert" tabindex="-1" hidden></p>
+          <p class="cta-status" id="ctaStatus" role="status" aria-live="polite" hidden></p>
+          <p class="disk-warning" id="diskWarning" hidden><span class="warning-mark" aria-hidden="true"></span><span id="diskWarningText"></span></p>
+        </div>
+      </section>
+    </section>
+
+    <aside class="column activity-column" aria-labelledby="activityTitle">
+      <div class="section-head activity-head">
+        <div class="activity-title-row">
+          <h2 id="activityTitle">Activity</h2>
+          <span class="head-meta" id="activityCount">No jobs</span>
+        </div>
+        <button type="button" class="icon-btn" id="refreshButton" aria-label="Refresh job queue" title="Refresh job queue">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true">
+            <path d="M13.4 6.2A5.6 5.6 0 1 0 13.7 9"></path>
+            <path d="M13.6 2.6v3.8H9.8"></path>
+          </svg>
+        </button>
+      </div>
+
+      <p class="queue-notice" id="queueNotice" role="status" hidden></p>
+
+      <div class="queue-scroll" id="queueScroll">
+        <ul class="job-list" id="jobList" aria-label="Job queue"></ul>
+
+        <div class="queue-empty" id="queueEmpty">
+          <svg viewBox="0 0 34 26" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+            <rect x="1" y="1" width="32" height="24"></rect>
+            <path d="M8.5 1v24M25.5 1v24M1 6.5h7.5M1 13h7.5M1 19.5h7.5M25.5 6.5H33M25.5 13H33M25.5 19.5H33"></path>
+            <path d="M14.5 9.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"></path>
+          </svg>
+          <p class="queue-empty-title">Nothing in the queue. Drop a clip to start.</p>
+          <p class="queue-empty-hint">Processing runs on this machine, one job at a time.</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner shell">
+      <span id="stationVersion">RVEWeb</span>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <span>local processing</span>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <span>one GPU, one job at a time</span>
+    </div>
+  </footer>
+
+  <div class="sr-only" id="liveRegion" aria-live="polite" aria-atomic="true"></div>
+
+  <noscript>
+    <p class="noscript">RVEWeb needs JavaScript to read video metadata and talk to the station.</p>
+  </noscript>
+
+  <template id="jobTemplate">
+    <li class="job-card">
+      <div class="job-top">
+        <div class="thumb">
+          <span class="thumb-placeholder" aria-hidden="true">
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="1" y="3" width="16" height="12"></rect>
+              <path d="M6.8 6.4l4.4 2.6-4.4 2.6z" fill="currentColor" stroke="none"></path>
+            </svg>
+          </span>
+          <img alt="" decoding="async" hidden>
+        </div>
+        <div class="job-body">
+          <div class="job-title-row">
+            <span class="job-name"></span>
+            <span class="job-status"></span>
+          </div>
+          <p class="job-stage"></p>
+          <div class="job-progress">
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span class="progress-fill"></span>
+            </div>
+            <span class="job-readout mono"></span>
+          </div>
+          <div class="job-actions"></div>
+          <p class="job-error" hidden></p>
+          <p class="job-output mono" hidden></p>
+        </div>
+      </div>
+    </li>
+  </template>
+</body>
+</html>
