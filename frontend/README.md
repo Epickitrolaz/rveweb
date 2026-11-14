@@ -20,14 +20,26 @@ same origin, usually <http://10.0.0.121:8080>. API calls are relative (`/api/...
 
 - `GET /health`
 - `GET /api/system` (models, GPU, queue, `limits.maxUploadMb`, `limits.maxOutputPixels`)
+- `GET /api/settings` / `PUT /api/settings`
 - `GET /api/jobs?limit=20`
-- `POST /api/jobs` (multipart: `file`, `settings` JSON)
+- `POST /api/jobs` (multipart: `file` or `libraryVersionId`, plus `settings` JSON)
 - `POST /api/jobs/{id}/cancel`
 - `DELETE /api/jobs/{id}`
 - `GET /api/jobs/{id}/thumbnail`
 - `GET /api/jobs/{id}/download`
+- `GET /api/library`, `POST /api/library`
+- `GET /api/library/{id}`
+- `POST /api/library/{id}/activate`
+- `DELETE /api/library/{id}`
+- `GET /api/library/{id}/versions/{versionId}/stream|download|thumbnail`
 
 See [../docs/API.md](../docs/API.md) for the exact payloads.
+
+## Tabs
+
+- **Enhance** — source, projection, signal chain, activity queue.
+- **Library** — persistent uploads, playback, download, branching and restore.
+- **Settings** — Auto/GPU-only/CPU-only processing mode, new-job defaults, station info.
 
 ## Notes
 

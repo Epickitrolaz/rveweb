@@ -20,6 +20,15 @@ third-party components and models.
 - Bundled at image build time from a pinned commit and verified by SHA-256.
 - License: MIT (model export), RIFE code MIT.
 
+## RIFE ncnn models (4.6–4.26) and Vulkan Python wrapper
+
+- Models: `rife-v4.6`, `4.7`, `4.12`, `4.15`, `4.18`, `4.22`, `4.25`, `4.26`
+- Upstream: https://github.com/TNTwise/rife-ncnn-vulkan (MIT) and the
+  `rife-ncnn-vulkan-python-tntwise` package (MIT)
+- Bundled/verified at image build time; used for GPU-only and GPU-accelerated
+  interpolation.
+- License: MIT.
+
 ## Real-ESRGAN
 
 - Upstream: https://github.com/xinntao/Real-ESRGAN
