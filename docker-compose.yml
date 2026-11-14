@@ -33,7 +33,6 @@ services:
     cpus: 3.5
     mem_limit: 7g
     pids_limit: 512
-    init: true
     security_opt:
       - "no-new-privileges:true"
     healthcheck:
