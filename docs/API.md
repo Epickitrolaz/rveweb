@@ -20,6 +20,7 @@ code.
   "memory": { "totalMb": 8192, "availableMb": 6120 },
   "storage": { "freeGb": 12.8 },
   "queue": { "active": 1, "queued": 2, "maxActive": 1, "maxQueue": 50 },
+  "limits": { "maxUploadMb": 1024, "minFreeGb": 3, "retentionHours": 72, "maxOutputPixels": 8294400 },
   "models": {
     "upscalers": [
       { "id": "realesrgan-video", "label": "Real-ESRGAN v3 · Video", "scales": [2, 3, 4], "note": "Fast, video-tuned" },
@@ -35,6 +36,8 @@ code.
 ```
 `gpu.available` may be false; the UI must still work and say GPU is unavailable.
 `storage.freeGb` may be low; the UI should warn under 3 GB.
+`limits.maxOutputPixels` is the projected width × height ceiling (4K); reject an upload with
+`422` before queueing if the chosen upscale would exceed it.
 
 ## Jobs
 

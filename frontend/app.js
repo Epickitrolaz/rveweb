@@ -1486,10 +1486,10 @@ function updateProjection() {
 
   const scaleFactor = settings.upscale.enabled ? settings.upscale.scale : 1;
   const outputWidth = settings.upscale.enabled
-    ? Math.round((source.width * scaleFactor) / 2) * 2
+    ? Math.max(2, Math.round((source.width * scaleFactor) / 2) * 2)
     : source.width;
   const outputHeight = settings.upscale.enabled
-    ? Math.round(source.height * scaleFactor)
+    ? Math.max(2, Math.round((source.height * scaleFactor) / 2) * 2)
     : source.height;
 
   const inputFps = source.fps;

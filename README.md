@@ -123,6 +123,7 @@ Finished jobs are downloadable for `RETENTION_HOURS`, then removed by the manage
 - 8-bit SDR pipeline; HDR/10-bit sources are converted to 8-bit.
 - Anamorphic sources are treated as square pixels (no SAR restoration).
 - Inputs up to 4K and 4 hours; upload default 1 GB.
+- Projected output is capped at 4K (3840×2160) to keep the single-GPU queue stable.
 - Interpolation works on the whole frame; there is no mask/region selection.
 - Model files are pinned and verified at image build time. Rebuild to update them.
 
