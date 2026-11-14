@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
+import shutil
 import signal
 import sys
 import time
@@ -12,8 +14,9 @@ import traceback
 from pathlib import Path
 
 from . import config
+from .catalog import INTERPOLATORS, UPSCALERS
 from .db import Database
-from .engine.ffmpeg import EngineError
+from .engine.ffmpeg import EngineError, make_thumbnail
 from .engine.pipeline import Cancelled, Pipeline
 from .schemas import JobSettings
 
@@ -37,6 +40,65 @@ def _friendly_error(exc: BaseException, job_dir: Path) -> str:
 
 def _handle_term(signum, frame):  # noqa: ANN001
     raise KeyboardInterrupt(f"signal {signum}")
+
+
+def _version_label(settings: JobSettings) -> str:
+    parts: list[str] = []
+    if settings.interpolate.enabled:
+        spec = INTERPOLATORS[settings.interpolate.model]
+        parts.append(f"{spec.label} {settings.interpolate.factor}×")
+    if settings.upscale.enabled:
+        spec = UPSCALERS[settings.upscale.model]
+        parts.append(f"{spec.label} {settings.upscale.scale}×")
+    if settings.denoise.enabled:
+        parts.append(f"denoise {settings.denoise.strength}")
+    if settings.decompress.enabled:
+        parts.append(f"deblock {settings.decompress.strength}")
+    return " · ".join(parts) or "Re-encode"
+
+
+def _finalize_library_version(db: Database, job: dict, info: dict, output_path: str,
+                              settings: JobSettings) -> tuple[str, dict]:
+    item_id = job["library_item_id"]
+    item = db.get_library_item(item_id)
+    if item is None:
+        raise EngineError("the library item no longer exists")
+    version_id = "v_" + secrets.token_hex(6)
+    version_dir = config.LIBRARY_DIR / item_id / version_id
+    version_dir.mkdir(parents=True, exist_ok=True)
+    destination = version_dir / f"video.{settings.encode.container}"
+    try:
+        os.replace(output_path, destination)
+    except OSError as exc:
+        shutil.rmtree(version_dir, ignore_errors=True)
+        raise EngineError(f"could not store the library version: {exc}") from exc
+
+    thumb = version_dir / "thumb.jpg"
+    make_thumbnail(str(destination), str(thumb))
+    label = _version_label(settings)
+    metadata = dict(info)
+    metadata["name"] = item["name"]
+    metadata["libraryVersionId"] = version_id
+    metadata["libraryItemId"] = item_id
+    try:
+        db.add_library_version(
+            item_id=item_id,
+            parent_version_id=job.get("library_parent_version_id"),
+            job_id=job["id"],
+            path=str(destination),
+            thumb_path=str(thumb) if thumb.exists() else None,
+            label=label,
+            metadata=metadata,
+            settings=settings.model_dump(),
+            version_id=version_id,
+        )
+    except Exception:
+        shutil.rmtree(version_dir, ignore_errors=True)
+        raise
+    info["libraryVersionId"] = version_id
+    info["libraryItemId"] = item_id
+    info["filename"] = f"{Path(item['name']).stem}-{version_id}.{settings.encode.container}"
+    return str(destination), info
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,6 +174,8 @@ def main(argv: list[str] | None = None) -> int:
         stem = Path(job["source"].get("name") or "video").stem
         friendly = f"{stem}-enhanced.{container}"
         info["filename"] = friendly
+        if job.get("library_item_id"):
+            output_path, info = _finalize_library_version(db, job, info, output_path, settings)
         db.update_job(
             job_id,
             status="completed",

@@ -20,7 +20,9 @@ from .ffmpeg import (
     mux_audio,
     probe_video,
 )
+from ..catalog import INTERPOLATORS
 from .rife import RifeInterpolator
+from .rife_ncnn import RifeNcnnInterpolator
 from .upscale import Upscaler
 
 log = logging.getLogger(__name__)
@@ -137,11 +139,27 @@ class Pipeline:
         self._report(0.02, self.stage, force=True)
 
         if settings.interpolate.enabled:
-            self.interpolator = RifeInterpolator(
-                settings.interpolate.model, max_height=settings.interpolate.maxHeight
-            )
+            mode = settings.processing.mode
+            spec = INTERPOLATORS[settings.interpolate.model]
+            if spec.engine == "ncnn":
+                self.interpolator = RifeNcnnInterpolator(
+                    settings.interpolate.model,
+                    mode=mode,
+                    max_height=settings.interpolate.maxHeight,
+                )
+            else:
+                if mode == "gpu":
+                    raise EngineError(
+                        "GPU-only mode cannot use RIFE 4.27 (ONNX CPU). "
+                        "Choose RIFE 4.26 or older, or switch to Auto."
+                    )
+                self.interpolator = RifeInterpolator(
+                    settings.interpolate.model, max_height=settings.interpolate.maxHeight
+                )
         if settings.upscale.enabled:
-            self.upscaler = Upscaler(settings.upscale.model, settings.upscale.scale)
+            self.upscaler = Upscaler(
+                settings.upscale.model, settings.upscale.scale, settings.processing.mode
+            )
 
         frame_bytes = self.width * self.height * 3
         temp_dir = Path(self.output_path).parent
@@ -212,8 +230,12 @@ class Pipeline:
             info = probe_video(self.output_path)
             info["frameCount"] = self.output_frames
             info["engine"] = {
+                "mode": settings.processing.mode,
                 "upscaler": self.upscaler.mode if self.upscaler else "off",
-                "interpolation": "cpu-onnx" if self.interpolator else "off",
+                "interpolation": (
+                    "off" if not self.interpolator
+                    else getattr(self.interpolator, "backend", "cpu-onnx")
+                ),
             }
             self._report(1.0, "done", force=True)
             log.info(

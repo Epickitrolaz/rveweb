@@ -46,7 +46,17 @@
     </div>
   </header>
 
-  <main class="workspace shell" id="console">
+  <nav class="tabbar" aria-label="Console sections">
+    <div class="tabbar-inner shell" role="tablist" aria-label="Views">
+      <button type="button" class="tab is-active" id="tab-enhance" role="tab" aria-selected="true" aria-controls="view-enhance" data-tab="enhance">Enhance</button>
+      <button type="button" class="tab" id="tab-library" role="tab" aria-selected="false" aria-controls="view-library" data-tab="library" tabindex="-1">Library</button>
+      <button type="button" class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="view-settings" data-tab="settings" tabindex="-1">Settings</button>
+      <button type="button" class="mode-pill" id="modeChip" title="Processing mode. Open Settings to change it.">Auto</button>
+    </div>
+  </nav>
+
+  <main class="main shell" id="console">
+    <div class="view workspace" id="view-enhance" role="tabpanel" aria-labelledby="tab-enhance">
     <section class="column source-column" aria-labelledby="sourceTitle">
       <div class="section-head">
         <h2 id="sourceTitle">Source</h2>
@@ -90,6 +100,7 @@
         <span id="sourceSize"></span>
       </div>
       <p class="source-note" id="sourceNote" hidden></p>
+      <p class="source-origin" id="sourceOrigin" hidden></p>
 
       <section class="projection" aria-labelledby="projectionTitle">
         <div class="projection-head">
@@ -346,6 +357,145 @@
         </div>
       </div>
     </aside>
+    </div>
+
+    <section class="view library-view" id="view-library" role="tabpanel" aria-labelledby="tab-library" hidden>
+      <div class="view-head">
+        <div class="view-title">
+          <h2>Library</h2>
+          <p>Upload once. Play, branch, and restore any version without losing the others.</p>
+        </div>
+        <div class="view-actions">
+          <button type="button" class="btn-primary" id="libraryUploadBtn">Upload video</button>
+          <input type="file" id="libraryFileInput" accept="video/*,.mkv,.avi,.m4v" hidden>
+        </div>
+      </div>
+      <div class="library-progress upload-track" id="libraryUploadTrack" role="progressbar" aria-label="Library upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+        <span class="upload-fill" id="libraryUploadFill"></span>
+      </div>
+      <p class="library-notice" id="libraryNotice" role="status" hidden></p>
+      <div class="library-layout">
+        <div class="library-list-wrap">
+          <div class="library-list" id="libraryList" aria-label="Library videos"></div>
+          <div class="library-empty" id="libraryEmpty">
+            <svg viewBox="0 0 34 26" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+              <rect x="1" y="1" width="32" height="24"></rect>
+              <path d="M8.5 1v24M25.5 1v24M1 6.5h7.5M1 13h7.5M1 19.5h7.5M25.5 6.5H33M25.5 13H33M25.5 19.5H33"></path>
+              <path d="M14.5 9.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"></path>
+            </svg>
+            <p class="queue-empty-title">The library is empty.</p>
+            <p class="queue-empty-hint">Upload a clip to keep it, branch versions, and enhance any version later.</p>
+          </div>
+        </div>
+        <aside class="library-detail" id="libraryDetail" aria-labelledby="libraryDetailName" hidden>
+          <div class="detail-head">
+            <button type="button" class="link-btn" id="libraryBack">← Back to library</button>
+            <button type="button" class="danger-btn" id="libraryDelete">Delete item</button>
+          </div>
+          <div class="detail-title-row">
+            <h3 id="libraryDetailName">Library clip</h3>
+            <span class="head-meta" id="libraryDetailVersions"></span>
+          </div>
+          <div class="library-player-wrap">
+            <video id="libraryPlayer" controls playsinline preload="metadata"></video>
+          </div>
+          <p class="mono library-detail-meta" id="libraryDetailMeta"></p>
+          <p class="library-detail-label" id="libraryDetailLabel"></p>
+          <div class="library-detail-actions">
+            <button type="button" class="btn-primary" id="libraryEnhance">Enhance this version</button>
+            <a class="btn-ghost" id="libraryDownload" href="#">Download</a>
+          </div>
+          <div class="tree-head">
+            <h4>Version tree</h4>
+            <span class="head-meta" id="libraryTreeHint">Restore keeps history</span>
+          </div>
+          <p class="tree-note">Restoring a version makes it the branch point for the next enhancement. Nothing is deleted.</p>
+          <div class="version-tree" id="libraryTree" role="tree" aria-label="Version tree"></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="view settings-view" id="view-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <div class="view-head">
+        <div class="view-title">
+          <h2>Settings</h2>
+          <p>Processing mode applies to new jobs. Existing queue items keep the mode they were accepted with.</p>
+        </div>
+        <div class="view-actions">
+          <button type="button" class="btn-primary" id="settingsSave">Save settings</button>
+        </div>
+      </div>
+      <div class="settings-grid">
+        <section class="settings-card" aria-labelledby="processingTitle">
+          <h3 id="processingTitle">Processing mode</h3>
+          <div class="radio-cards" role="radiogroup" aria-label="Processing mode">
+            <label class="radio-card">
+              <input type="radio" name="processingMode" value="auto">
+              <span class="radio-title">Auto</span>
+              <span class="radio-copy">Use Vulkan when available. RIFE 4.27 stays on CPU; older RIFE models use GPU.</span>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="processingMode" value="gpu">
+              <span class="radio-title">GPU only</span>
+              <span class="radio-copy">Require Vulkan for AI upscale and interpolation. Use RIFE 4.26 or older; Lanczos and CPU-only RIFE are unavailable.</span>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="processingMode" value="cpu">
+              <span class="radio-title">CPU only</span>
+              <span class="radio-copy">Lanczos scaling and CPU interpolation. Slow, but requires no Vulkan device.</span>
+            </label>
+          </div>
+          <p class="settings-note">Decode, filters, and encode still run through FFmpeg on the CPU. GPU-only applies to the AI stages.</p>
+        </section>
+
+        <section class="settings-card" aria-labelledby="defaultsTitle">
+          <h3 id="defaultsTitle">New-job defaults</h3>
+          <div class="settings-fields">
+            <label class="field">
+              <span class="field-label">Codec</span>
+              <select id="settingsCodec">
+                <option value="h264">H.264</option>
+                <option value="h265">H.265</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Container</span>
+              <select id="settingsContainer">
+                <option value="mp4">MP4</option>
+                <option value="mkv">MKV</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Encoder preset</span>
+              <select id="settingsPreset">
+                <option value="veryfast">Very fast</option>
+                <option value="fast">Fast</option>
+                <option value="medium">Medium</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Audio</span>
+              <select id="settingsAudio">
+                <option value="copy">Copy audio</option>
+                <option value="none">No audio</option>
+              </select>
+            </label>
+            <div class="field field-wide">
+              <span class="field-label"><span>Quality</span><span class="field-value mono" id="settingsCrfValue">CRF 18</span></span>
+              <input type="range" id="settingsCrf" min="14" max="28" step="1" value="18" aria-label="Default quality, CRF 18">
+              <span class="crf-scale" aria-hidden="true"><span>← Better</span><span>Smaller →</span></span>
+            </div>
+          </div>
+          <p class="settings-note">These defaults are copied into the Enhance tab when you change them. You can still override per job.</p>
+        </section>
+
+        <section class="settings-card" aria-labelledby="stationTitle">
+          <h3 id="stationTitle">Station</h3>
+          <div class="station-info" id="stationInfo"></div>
+        </section>
+      </div>
+      <p class="settings-status" id="settingsStatus" role="status" aria-live="polite" hidden></p>
+    </section>
   </main>
 
   <footer class="site-footer">

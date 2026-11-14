@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 class Upscaler:
-    def __init__(self, model_id: str, scale: int) -> None:
+    def __init__(self, model_id: str, scale: int, mode: str = "auto") -> None:
         spec = UPSCALERS.get(model_id)
         if spec is None:
             raise EngineError(f"unknown upscaling model: {model_id}")
@@ -24,15 +24,18 @@ class Upscaler:
             raise EngineError(f"{model_id} does not support {scale}x")
         self.spec = spec
         self.scale = scale
+        self.mode = "lanczos"
         self.native_scale = spec.native_scale or scale
         self.model_name = upscaler_model_id(spec, scale)
-        self.mode = "lanczos"
         self._net = None
         self._ncnn = None
         self._load_error: str | None = None
-        self._init_ncnn()
+        if spec.engine == "cpu" or mode == "cpu":
+            self.mode = "lanczos"
+            return
+        self._init_ncnn(require_gpu=mode == "gpu")
 
-    def _init_ncnn(self) -> None:
+    def _init_ncnn(self, *, require_gpu: bool = False) -> None:
         param_path = config.MODEL_DIR / "upscalers" / f"{self.model_name}.param"
         bin_path = config.MODEL_DIR / "upscalers" / f"{self.model_name}.bin"
         if not param_path.exists() or not bin_path.exists():
@@ -41,6 +44,8 @@ class Upscaler:
             import ncnn
         except ImportError:
             self._load_error = "ncnn python bindings are not installed"
+            if require_gpu:
+                raise EngineError("GPU-only mode requires the Vulkan upscaler runtime")
             log.warning("upscaler falling back to Lanczos: %s", self._load_error)
             return
         try:
@@ -49,6 +54,8 @@ class Upscaler:
             gpu_count = 0
         if gpu_count <= 0:
             self._load_error = "no Vulkan device found"
+            if require_gpu:
+                raise EngineError("GPU-only mode requires a working Vulkan device")
             log.warning("upscaler falling back to Lanczos: %s", self._load_error)
             return
 
@@ -65,6 +72,8 @@ class Upscaler:
             net.load_model(str(bin_path))
         except Exception as exc:
             self._load_error = str(exc)
+            if require_gpu:
+                raise EngineError(f"could not initialise the Vulkan upscaler: {exc}") from exc
             log.warning("upscaler falling back to Lanczos: %s", exc)
             return
 

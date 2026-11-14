@@ -29,7 +29,7 @@ def _env_float(name: str, default: float, minimum: float = 0.0) -> float:
         return default
 
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 DATA_DIR = _env_path("DATA_DIR", APP_DIR / "data")
 MODEL_DIR = _env_path("MODEL_DIR", APP_DIR / "models")
@@ -63,6 +63,7 @@ ALLOWED_EXTENSIONS = {
 
 JOBS_DIR = DATA_DIR / "jobs"
 LOG_DIR = DATA_DIR / "logs"
+LIBRARY_DIR = DATA_DIR / "library"
 
-for directory in (DATA_DIR, JOBS_DIR, LOG_DIR):
+for directory in (DATA_DIR, JOBS_DIR, LOG_DIR, LIBRARY_DIR):
     directory.mkdir(parents=True, exist_ok=True)

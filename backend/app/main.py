@@ -1,4 +1,4 @@
-"""FastAPI application: HTTP API, queue supervision, and the static console."""
+"""FastAPI application: HTTP API, queue supervision, library, and the console."""
 
 from __future__ import annotations
 
@@ -20,11 +20,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from . import config
+from .catalog import INTERPOLATORS
 from .db import Database
 from .engine.ffmpeg import EngineError, make_thumbnail, probe_video
 from .manager import JobManager
-from .schemas import parse_settings
-from .system import system_info, uptime_seconds
+from .schemas import LibraryActivate, StationSettingsUpdate, parse_settings
+from .system import gpu_info, system_info, uptime_seconds
 
 log = logging.getLogger("rveweb.api")
 
@@ -61,7 +62,7 @@ app = FastAPI(
 
 @app.middleware("http")
 async def request_guard(request: Request, call_next):
-    if request.method == "POST" and request.url.path == "/api/jobs":
+    if request.method == "POST" and request.url.path in ("/api/jobs", "/api/library"):
         raw_length = request.headers.get("content-length")
         if raw_length:
             try:
@@ -108,6 +109,9 @@ async def api_system(db: Database = Depends(get_db)):
     return system_info(db.queue_counts())
 
 
+# --------------------------------------------------------------------- jobs
+
+
 @app.get("/api/jobs")
 async def api_list_jobs(
     limit: int = Query(default=20, ge=1, le=50),
@@ -128,12 +132,18 @@ async def api_get_job(job_id: str, db: Database = Depends(get_db)):
 @app.post("/api/jobs", status_code=201)
 async def api_create_job(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    library_version_id: str | None = Form(default=None, alias="libraryVersionId"),
     settings: str = Form(...),
     db: Database = Depends(get_db),
 ):
+    if file is None and not library_version_id:
+        raise HTTPException(status_code=422, detail="provide a video file or a libraryVersionId")
+    if file is not None and library_version_id:
+        raise HTTPException(status_code=422, detail="provide either a file or a libraryVersionId, not both")
+
     try:
-        parsed = parse_settings(settings)
+        parsed, mode = _prepare_settings(db, settings)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -145,6 +155,63 @@ async def api_create_job(
         )
     _require_disk_space()
 
+    if library_version_id:
+        return await _create_library_job(db, library_version_id, parsed, mode)
+    return await _create_upload_job(request, db, file, parsed, mode)
+
+
+async def _create_library_job(db: Database, version_id: str, parsed, mode: str):
+    version = db.get_library_version(version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="library version not found")
+    item = db.get_library_item(version["itemId"])
+    if item is None:
+        raise HTTPException(status_code=404, detail="library item not found")
+    source_path = Path(version["path"])
+    if not source_path.exists():
+        raise HTTPException(status_code=410, detail="the library file is no longer available")
+    _validate_output_size(version["metadata"], parsed)
+    _require_disk_space()
+
+    job_id = "j_" + secrets.token_hex(6)
+    job_dir = config.JOBS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    ext = source_path.suffix
+    dest = job_dir / f"input{ext}"
+    try:
+        _link_or_copy(source_path, dest)
+        thumb = job_dir / "thumb.jpg"
+        if version.get("thumbPath") and Path(version["thumbPath"]).exists():
+            shutil.copy2(version["thumbPath"], thumb)
+        else:
+            make_thumbnail(str(dest), str(thumb))
+        source = dict(version["metadata"])
+        source["name"] = item["name"]
+        source["libraryVersionId"] = version_id
+        job = db.create_job(
+            source=source,
+            settings=parsed.model_dump(),
+            input_path=str(dest),
+            thumb_path=str(thumb) if thumb.exists() else None,
+            job_id=job_id,
+            max_queue=config.MAX_QUEUE,
+            library_item_id=item["id"],
+            library_parent_version_id=version_id,
+        )
+        if job is None:
+            raise HTTPException(
+                status_code=429,
+                detail=f"The queue is full ({config.MAX_QUEUE} waiting). Let a job finish, then try again.",
+            )
+    except BaseException:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+
+    log.info("accepted library job %s (%s, version %s, mode %s)", job_id, item["name"], version_id, mode)
+    return db.public_job(job)
+
+
+async def _create_upload_job(request: Request, db: Database, file: UploadFile, parsed, mode: str):
     original_name = Path(file.filename or "video").name
     extension = Path(original_name).suffix.lower()
     if extension not in config.ALLOWED_EXTENSIONS:
@@ -166,30 +233,15 @@ async def api_create_job(
         staging = Path(tempfile.mkdtemp(prefix="upload-", dir=upload_root))
         staged_file = staging / f"input{extension}"
         final_dir: Path | None = None
-        total = 0
         try:
-            with open(staged_file, "wb") as output:
-                while True:
-                    chunk = await file.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    total += len(chunk)
-                    if total > config.MAX_UPLOAD_BYTES:
-                        raise HTTPException(
-                            status_code=413,
-                            detail=f"Upload is larger than the {config.MAX_UPLOAD_MB} MB limit.",
-                        )
-                    output.write(chunk)
-            await file.close()
+            total = await _stream_upload(file, staged_file)
             if total == 0:
                 raise HTTPException(status_code=422, detail="The uploaded file is empty.")
-
             try:
                 meta = await run_in_threadpool(probe_video, str(staged_file))
             except EngineError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             _validate_output_size(meta, parsed)
-
             thumb_path = staging / "thumb.jpg"
             has_thumb = await run_in_threadpool(make_thumbnail, str(staged_file), str(thumb_path))
 
@@ -213,17 +265,13 @@ async def api_create_job(
                 max_queue=config.MAX_QUEUE,
             )
             if job is None:
-                shutil.rmtree(final_dir, ignore_errors=True)
                 raise HTTPException(
                     status_code=429,
-                    detail=(
-                        f"The queue is full ({config.MAX_QUEUE} waiting). "
-                        "Let a job finish, then try again."
-                    ),
+                    detail=f"The queue is full ({config.MAX_QUEUE} waiting). Let a job finish, then try again.",
                 )
             log.info(
-                "accepted job %s (%s, %.1f MB, %dx%d@%.2f)",
-                job_id, original_name, total / 1e6, meta["width"], meta["height"], meta["fps"],
+                "accepted job %s (%s, %.1f MB, %dx%d@%.2f, mode %s)",
+                job_id, original_name, total / 1e6, meta["width"], meta["height"], meta["fps"], mode,
             )
             return db.public_job(job)
         except BaseException:
@@ -273,8 +321,7 @@ async def api_download(job_id: str, db: Database = Depends(get_db)):
         raise HTTPException(status_code=404, detail="the output file is no longer available")
     output = job.get("output") or {}
     filename = output.get("filename") or f"{job_id}.mp4"
-    media_type = "video/x-matroska" if filename.endswith(".mkv") else "video/mp4"
-    return FileResponse(path, media_type=media_type, filename=filename)
+    return FileResponse(path, media_type=_media_type(filename), filename=filename)
 
 
 @app.get("/api/jobs/{job_id}/thumbnail")
@@ -286,6 +333,263 @@ async def api_thumbnail(job_id: str, db: Database = Depends(get_db)):
     if not thumb or not Path(thumb).exists():
         raise HTTPException(status_code=404, detail="no thumbnail available")
     return FileResponse(thumb, media_type="image/jpeg")
+
+
+# ------------------------------------------------------------------ library
+
+
+@app.get("/api/library")
+async def api_library_list(db: Database = Depends(get_db)):
+    items = db.list_library_items()
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/api/library/{item_id}")
+async def api_library_item(item_id: str, db: Database = Depends(get_db)):
+    item = db.get_library_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="library item not found")
+    return db.public_library_item(item)
+
+
+@app.post("/api/library", status_code=201)
+async def api_library_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Database = Depends(get_db),
+):
+    original_name = Path(file.filename or "video").name
+    extension = Path(original_name).suffix.lower()
+    if extension not in config.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail="Unsupported file type. Use MP4, MKV, MOV, WebM, AVI, or another common video format.",
+        )
+    _require_disk_space()
+    semaphore: asyncio.Semaphore = request.app.state.upload_sem
+    if semaphore.locked():
+        raise HTTPException(status_code=429, detail="Too many uploads at once. Wait for the current uploads to finish.")
+
+    async with semaphore:
+        upload_root = config.DATA_DIR / "uploads"
+        upload_root.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix="library-", dir=upload_root))
+        staged_file = staging / f"input{extension}"
+        item_id = "lib_" + secrets.token_hex(6)
+        version_id = "v_" + secrets.token_hex(6)
+        version_dir = config.LIBRARY_DIR / item_id / version_id
+        try:
+            total = await _stream_upload(file, staged_file)
+            if total == 0:
+                raise HTTPException(status_code=422, detail="The uploaded file is empty.")
+            try:
+                meta = await run_in_threadpool(probe_video, str(staged_file))
+            except EngineError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            version_dir.mkdir(parents=True, exist_ok=True)
+            final_video = version_dir / f"video{extension}"
+            os.replace(staged_file, final_video)
+            thumb_src = staging / "thumb.jpg"
+            has_thumb = await run_in_threadpool(make_thumbnail, str(final_video), str(thumb_src))
+            final_thumb = None
+            if has_thumb:
+                final_thumb = version_dir / "thumb.jpg"
+                os.replace(thumb_src, final_thumb)
+            meta["name"] = original_name
+            meta["sizeBytes"] = total
+            item = db.create_library_item(
+                name=original_name,
+                version_id=version_id,
+                path=str(final_video),
+                thumb_path=str(final_thumb) if final_thumb else None,
+                label="Original",
+                metadata=meta,
+                settings={},
+                item_id=item_id,
+            )
+            log.info("library upload %s (%s, %.1f MB)", item_id, original_name, total / 1e6)
+            return db.public_library_item(item)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            shutil.rmtree(config.LIBRARY_DIR / item_id, ignore_errors=True)
+            raise
+
+
+@app.post("/api/library/{item_id}/activate", status_code=200)
+async def api_library_activate(
+    item_id: str,
+    payload: LibraryActivate,
+    db: Database = Depends(get_db),
+):
+    if not db.set_library_active(item_id, payload.versionId):
+        raise HTTPException(status_code=404, detail="library item or version not found")
+    item = db.get_library_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="library item not found")
+    return db.public_library_item(item)
+
+
+@app.delete("/api/library/{item_id}", status_code=204)
+async def api_library_delete(item_id: str, db: Database = Depends(get_db)):
+    item = db.get_library_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="library item not found")
+    if db.library_item_busy(item_id):
+        raise HTTPException(status_code=409, detail="cancel active jobs for this item before deleting it")
+    db.delete_library_item(item_id)
+    shutil.rmtree(config.LIBRARY_DIR / item_id, ignore_errors=True)
+    return Response(status_code=204)
+
+
+@app.get("/api/library/{item_id}/versions/{version_id}/stream")
+async def api_library_stream(item_id: str, version_id: str, db: Database = Depends(get_db)):
+    version = _library_version_for(db, item_id, version_id)
+    path = Path(version["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="library file is missing")
+    name = Path(version["path"]).name
+    return FileResponse(path, media_type=_media_type(name), content_disposition_type="inline")
+
+
+@app.get("/api/library/{item_id}/versions/{version_id}/download")
+async def api_library_download(item_id: str, version_id: str, db: Database = Depends(get_db)):
+    version = _library_version_for(db, item_id, version_id)
+    item = db.get_library_item(item_id)
+    path = Path(version["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="library file is missing")
+    stem = (item or {}).get("name", "video")
+    stem = Path(stem).stem
+    filename = f"{stem}-{version['label'].replace(' ', '-')}{path.suffix}"
+    return FileResponse(path, media_type=_media_type(path.name), filename=filename)
+
+
+@app.get("/api/library/{item_id}/versions/{version_id}/thumbnail")
+async def api_library_thumbnail(item_id: str, version_id: str, db: Database = Depends(get_db)):
+    version = _library_version_for(db, item_id, version_id)
+    thumb = version.get("thumbPath")
+    if not thumb or not Path(thumb).exists():
+        raise HTTPException(status_code=404, detail="no thumbnail available")
+    return FileResponse(thumb, media_type="image/jpeg")
+
+
+# ----------------------------------------------------------------- settings
+
+
+class _SettingsPayload(dict):
+    pass
+
+
+@app.get("/api/settings")
+async def api_get_settings(db: Database = Depends(get_db)):
+    return _settings_payload(db)
+
+
+@app.put("/api/settings")
+async def api_put_settings(payload: StationSettingsUpdate, db: Database = Depends(get_db)):
+    db.save_station_settings(
+        {
+            "processingMode": payload.processingMode,
+            "defaults": payload.defaults.model_dump(),
+        }
+    )
+    return _settings_payload(db)
+
+
+def _settings_payload(db: Database) -> dict[str, Any]:
+    station = db.get_station_settings()
+    return {
+        "processingMode": station.get("processingMode", "auto"),
+        "defaults": station.get("defaults", {}),
+        "capabilities": {
+            "gpu": gpu_info(),
+            "interpolators": system_info(db.queue_counts())["models"]["interpolators"],
+        },
+        "limits": {
+            "maxUploadMb": config.MAX_UPLOAD_MB,
+            "minFreeGb": config.MIN_FREE_GB,
+            "retentionHours": config.RETENTION_HOURS,
+            "maxOutputPixels": config.MAX_OUTPUT_PIXELS,
+        },
+    }
+
+
+# ------------------------------------------------------------------ helpers
+
+
+def _prepare_settings(db: Database, raw: str):
+    parsed = parse_settings(raw)
+    station = db.get_station_settings()
+    mode = station.get("processingMode", "auto")
+    if mode not in ("auto", "gpu", "cpu"):
+        mode = "auto"
+    parsed.processing.mode = mode
+    _validate_processing_mode(parsed, mode)
+    return parsed, mode
+
+
+def _validate_processing_mode(parsed, mode: str) -> None:
+    if mode == "gpu":
+        wants_ai = parsed.upscale.enabled or parsed.interpolate.enabled
+        if wants_ai and not gpu_info()["available"]:
+            raise HTTPException(status_code=422, detail="GPU-only mode is selected, but no Vulkan device is available.")
+        if parsed.upscale.enabled and parsed.upscale.model == "lanczos":
+            raise HTTPException(
+                status_code=422,
+                detail="GPU-only mode requires an AI upscaler. Choose Real-ESRGAN or switch to Auto/CPU.",
+            )
+        if parsed.interpolate.enabled and INTERPOLATORS[parsed.interpolate.model].backend != "gpu":
+            raise HTTPException(
+                status_code=422,
+                detail="GPU-only mode requires RIFE 4.26 or older (Vulkan). Choose a GPU model or switch to Auto.",
+            )
+    elif mode == "cpu":
+        if parsed.upscale.enabled and parsed.upscale.model != "lanczos":
+            raise HTTPException(
+                status_code=422,
+                detail="CPU-only mode uses Lanczos scaling. Choose Lanczos or switch to Auto/GPU.",
+            )
+
+
+async def _stream_upload(file: UploadFile, destination: Path) -> int:
+    total = 0
+    with open(destination, "wb") as output:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > config.MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Upload is larger than the {config.MAX_UPLOAD_MB} MB limit.",
+                )
+            output.write(chunk)
+    await file.close()
+    return total
+
+
+def _link_or_copy(source: Path, destination: Path) -> None:
+    try:
+        os.link(source, destination)
+    except OSError:
+        shutil.copy2(source, destination)
+
+
+def _library_version_for(db: Database, item_id: str, version_id: str) -> dict[str, Any]:
+    version = db.get_library_version(version_id)
+    if version is None or version["itemId"] != item_id:
+        raise HTTPException(status_code=404, detail="library version not found")
+    return version
+
+
+def _media_type(name: str) -> str:
+    lower = name.lower()
+    if lower.endswith(".mkv"):
+        return "video/x-matroska"
+    if lower.endswith(".webm"):
+        return "video/webm"
+    return "video/mp4"
 
 
 def _queue_payload(db: Database) -> dict[str, int]:

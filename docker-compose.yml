@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: rveweb:1.0.0
+    image: rveweb:1.1.0
     container_name: rveweb
     restart: unless-stopped
     ports:

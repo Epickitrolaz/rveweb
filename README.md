@@ -10,12 +10,17 @@ and adds a web service, a bounded job queue, and **RIFE 4.27** support.
 ## What it does
 
 - **Upscale** — Real-ESRGAN v3 x2/x3/x4 (fast, video-tuned), x4plus, and x4plus-anime,
-  running on Vulkan via ncnn with tiled inference.
-- **Interpolate** — RIFE 4.27 and RIFE 4.27 Small, 2x/4x/8x, with scene-cut guard and an
-  AI working-resolution cap. ONNX Runtime on CPU.
+  running on Vulkan via ncnn with tiled inference; Lanczos for CPU-only mode.
+- **Interpolate** — RIFE 4.27 and RIFE 4.27 Small (CPU ONNX), plus older RIFE 4.6, 4.7,
+  4.12, 4.15, 4.18, 4.22, 4.25, and 4.26 on Vulkan via ncnn, 2x/4x/8x, with scene-cut
+  guard and an AI working-resolution cap.
 - **Denoise** — three strengths of `hqdn3d`.
 - **Decompress** — weak/strong `deblock` for compression artifacts.
 - **Encode** — H.264 or H.265, CRF 14–28, MP4 or MKV, source audio preserved.
+- **Processing modes** — Auto, GPU-only (Vulkan AI stages, RIFE 4.26 or older), CPU-only
+  (Lanczos + CPU interpolation). The mode is a station-wide setting.
+- **Library** — upload once, play/download, enhance any version, and branch a version tree.
+  Restoring a version changes the branch point without deleting history.
 - **Queue** — SQLite-backed, bounded, persistent across restarts; one job at a time by
   default so the machine stays responsive.
 - **Crash isolation** — every enhancement runs in its own process group; the API survives
@@ -30,6 +35,7 @@ iGPU** (RADV Vulkan). There is no NVIDIA/CUDA device. Concretely:
 |---|---|---|
 | Real-ESRGAN upscale | **GPU (Vulkan / ncnn)** | ~0.2 s per 256 px tile with the v3 video model |
 | RIFE 4.27 interpolation | **CPU (ONNX Runtime)** | ~0.2–0.8 s per frame at 180–360p |
+| RIFE 4.6–4.26 interpolation | **GPU (Vulkan / ncnn)** | ~0.11 s per 640×360 pair; `GPU only` mode uses these |
 | Denoise / deblock / decode / encode | **CPU (FFmpeg)** | 2 threads each, leaving headroom for RIFE |
 
 Measured on the target (3 s, 320×180, 24 fps):
@@ -109,6 +115,11 @@ Finished jobs are downloadable for `RETENTION_HOURS`, then removed by the manage
 `DELETE /api/jobs/<id>` to remove one sooner. The SQLite database lives in the
 `rveweb-data` volume.
 
+The Library is separate from job retention: library videos and every version tree live
+under `/data/library` until you delete the item from the Library tab or
+`DELETE /api/library/<id>`. The Settings tab stores the station processing mode and
+new-job defaults in SQLite.
+
 ### Stability model
 
 - Uploads are size-capped, extension-checked, and validated with `ffprobe`.
@@ -126,6 +137,9 @@ Finished jobs are downloadable for `RETENTION_HOURS`, then removed by the manage
 - Inputs up to 4K and 4 hours; upload default 1 GB.
 - Projected output is capped at 4K (3840×2160) to keep the single-GPU queue stable.
 - Interpolation works on the whole frame; there is no mask/region selection.
+- GPU-only mode still uses FFmpeg on the CPU for decode, filters, and encode; it applies
+  only to AI upscale/interpolation.
+- Library items are permanent until deleted. Job retention does not remove them.
 - Model files are pinned and verified at image build time. Rebuild to update them.
 
 ## Development

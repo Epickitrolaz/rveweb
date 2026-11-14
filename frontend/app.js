@@ -1,4 +1,7 @@
 const SETTINGS_KEY = 'rveweb.settings.v1';
+const HAS_STORED_SETTINGS = (() => {
+  try { return Boolean(localStorage.getItem(SETTINGS_KEY)); } catch { return false; }
+})();
 let MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 let MAX_OUTPUT_PIXELS = 3840 * 2160;
 const ACCEPTED_EXTENSIONS = new Set(['mp4', 'mkv', 'mov', 'webm', 'avi', 'm4v']);
@@ -10,13 +13,22 @@ const MAX_JOBS = 20;
 
 const FALLBACK_MODELS = {
   upscalers: [
-    { id: 'realesrgan-video', label: 'Real-ESRGAN v3 · Video', scales: [2, 3, 4], note: 'Fast, video-tuned' },
-    { id: 'realesrgan-x4plus', label: 'Real-ESRGAN x4plus · Detail', scales: [2, 4], note: 'Slow, maximum detail' },
-    { id: 'realesrgan-x4plus-anime', label: 'Real-ESRGAN x4plus Anime', scales: [2, 4], note: 'Animation line art' },
+    { id: 'realesrgan-video', label: 'Real-ESRGAN v3 · Video', scales: [2, 3, 4], note: 'Fast, video-tuned', engine: 'ncnn' },
+    { id: 'realesrgan-x4plus', label: 'Real-ESRGAN x4plus · Detail', scales: [2, 4], note: 'Slow, maximum detail', engine: 'ncnn' },
+    { id: 'realesrgan-x4plus-anime', label: 'Real-ESRGAN x4plus Anime', scales: [2, 4], note: 'Animation line art', engine: 'ncnn' },
+    { id: 'lanczos', label: 'Lanczos · CPU', scales: [2, 3, 4], note: 'Fast CPU scaling, no AI', engine: 'cpu' },
   ],
   interpolators: [
-    { id: 'rife-4.27', label: 'RIFE 4.27', factors: [2, 4, 8], note: 'Quality' },
-    { id: 'rife-4.27-s', label: 'RIFE 4.27 Small', factors: [2, 4, 8], note: 'Faster, lighter' },
+    { id: 'rife-4.27', label: 'RIFE 4.27', factors: [2, 4, 8], note: 'Quality · CPU ONNX', engine: 'onnx', backend: 'cpu' },
+    { id: 'rife-4.27-s', label: 'RIFE 4.27 Small', factors: [2, 4, 8], note: 'Lighter · CPU ONNX', engine: 'onnx', backend: 'cpu' },
+    { id: 'rife-4.26', label: 'RIFE 4.26', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
+    { id: 'rife-4.25', label: 'RIFE 4.25', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
+    { id: 'rife-4.22', label: 'RIFE 4.22', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
+    { id: 'rife-4.18', label: 'RIFE 4.18', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
+    { id: 'rife-4.15', label: 'RIFE 4.15', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
+    { id: 'rife-4.12', label: 'RIFE 4.12', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
+    { id: 'rife-4.7', label: 'RIFE 4.7', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
+    { id: 'rife-4.6', label: 'RIFE 4.6', factors: [2, 4, 8], note: 'Vulkan · GPU', engine: 'ncnn', backend: 'gpu' },
   ],
 };
 
@@ -86,6 +98,7 @@ const els = {
   sourceDuration: document.getElementById('sourceDuration'),
   sourceSize: document.getElementById('sourceSize'),
   sourceNote: document.getElementById('sourceNote'),
+  sourceOrigin: document.getElementById('sourceOrigin'),
 
   projFrom: document.getElementById('projFrom'),
   projTo: document.getElementById('projTo'),
@@ -126,6 +139,43 @@ const els = {
   queueEmpty: document.getElementById('queueEmpty'),
   liveRegion: document.getElementById('liveRegion'),
   jobTemplate: document.getElementById('jobTemplate'),
+
+  modeChip: document.getElementById('modeChip'),
+  tabEnhance: document.getElementById('tab-enhance'),
+  tabLibrary: document.getElementById('tab-library'),
+  tabSettings: document.getElementById('tab-settings'),
+  viewEnhance: document.getElementById('view-enhance'),
+  viewLibrary: document.getElementById('view-library'),
+  viewSettings: document.getElementById('view-settings'),
+
+  libraryUploadBtn: document.getElementById('libraryUploadBtn'),
+  libraryFileInput: document.getElementById('libraryFileInput'),
+  libraryUploadTrack: document.getElementById('libraryUploadTrack'),
+  libraryUploadFill: document.getElementById('libraryUploadFill'),
+  libraryNotice: document.getElementById('libraryNotice'),
+  libraryList: document.getElementById('libraryList'),
+  libraryEmpty: document.getElementById('libraryEmpty'),
+  libraryDetail: document.getElementById('libraryDetail'),
+  libraryBack: document.getElementById('libraryBack'),
+  libraryDelete: document.getElementById('libraryDelete'),
+  libraryDetailName: document.getElementById('libraryDetailName'),
+  libraryDetailVersions: document.getElementById('libraryDetailVersions'),
+  libraryPlayer: document.getElementById('libraryPlayer'),
+  libraryDetailMeta: document.getElementById('libraryDetailMeta'),
+  libraryDetailLabel: document.getElementById('libraryDetailLabel'),
+  libraryEnhance: document.getElementById('libraryEnhance'),
+  libraryDownload: document.getElementById('libraryDownload'),
+  libraryTree: document.getElementById('libraryTree'),
+
+  settingsSave: document.getElementById('settingsSave'),
+  settingsCodec: document.getElementById('settingsCodec'),
+  settingsContainer: document.getElementById('settingsContainer'),
+  settingsPreset: document.getElementById('settingsPreset'),
+  settingsAudio: document.getElementById('settingsAudio'),
+  settingsCrf: document.getElementById('settingsCrf'),
+  settingsCrfValue: document.getElementById('settingsCrfValue'),
+  stationInfo: document.getElementById('stationInfo'),
+  settingsStatus: document.getElementById('settingsStatus'),
 };
 
 const state = {
@@ -161,6 +211,22 @@ const state = {
   confirmJobId: null,
   confirmTimer: null,
   queueNoticeUntil: 0,
+
+  tab: 'enhance',
+  station: { processingMode: 'auto', defaults: null },
+  stationOnline: null,
+  stationApplied: false,
+  library: {
+    items: [],
+    loading: false,
+    selectedId: null,
+    detail: null,
+    selectedVersionId: null,
+    uploadXhr: null,
+    uploading: false,
+    noticeTimer: null,
+    refreshTimer: null,
+  },
 
   dragDepth: 0,
 };
@@ -288,6 +354,8 @@ function normalizeModels(raw) {
           scales: kind === 'upscaler' ? numbers : undefined,
           factors: kind === 'interpolator' ? numbers : undefined,
           note: typeof item.note === 'string' ? item.note : '',
+          engine: typeof item.engine === 'string' ? item.engine : '',
+          backend: typeof item.backend === 'string' ? item.backend : '',
         };
       })
       .filter((item) => (kind === 'upscaler' ? item.scales?.length : item.factors?.length));
@@ -301,9 +369,78 @@ function normalizeModels(raw) {
   };
 }
 
+function processingMode() {
+  return state.station?.processingMode || 'auto';
+}
+
+function allowedUpscalers() {
+  const mode = processingMode();
+  const all = state.models.upscalers;
+  if (mode === 'gpu') {
+    const list = all.filter((model) => model.engine !== 'cpu');
+    return list.length ? list : all;
+  }
+  if (mode === 'cpu') {
+    const list = all.filter((model) => model.engine === 'cpu');
+    return list.length ? list : all;
+  }
+  return all;
+}
+
+function allowedInterpolators() {
+  const mode = processingMode();
+  const all = state.models.interpolators;
+  if (mode === 'gpu') {
+    const list = all.filter((model) => model.backend === 'gpu');
+    return list.length ? list : all;
+  }
+  return all;
+}
+
+function applyModeCompatibility() {
+  const mode = processingMode();
+  if (mode === 'gpu') {
+    if (state.settings.upscale.model === 'lanczos') {
+      state.settings.upscale.model = 'realesrgan-video';
+    }
+    const gpuModels = state.models.interpolators.filter((model) => model.backend === 'gpu');
+    if (!gpuModels.some((model) => model.id === state.settings.interpolate.model) && gpuModels.length) {
+      state.settings.interpolate.model = gpuModels[0].id;
+    }
+  } else if (mode === 'cpu') {
+    if (state.settings.upscale.model !== 'lanczos') {
+      state.settings.upscale.model = 'lanczos';
+    }
+  }
+  state.settings = sanitizeSettings(state.settings, state.models);
+  saveSettings();
+  rebuildModelSelects();
+  applySettingsToControls();
+  updateProjection();
+  updateCta();
+  updateModeChip();
+}
+
+function updateModeChip() {
+  const mode = processingMode();
+  const labels = { auto: 'Auto', gpu: 'GPU only', cpu: 'CPU only' };
+  if (els.modeChip) {
+    els.modeChip.textContent = labels[mode] || 'Auto';
+    els.modeChip.dataset.mode = mode;
+  }
+}
+
+function updateModeChipFromForm() {
+  const selected = document.querySelector('input[name="processingMode"]:checked');
+  if (!selected || !els.modeChip) return;
+  const labels = { auto: 'Auto', gpu: 'GPU only', cpu: 'CPU only' };
+  els.modeChip.textContent = labels[selected.value] || 'Auto';
+  els.modeChip.dataset.mode = selected.value;
+}
+
 function rebuildModelSelects() {
-  const upscalers = state.models.upscalers;
-  const interpolators = state.models.interpolators;
+  const upscalers = allowedUpscalers();
+  const interpolators = allowedInterpolators();
 
   fillSelect(els.upscaleModel, upscalers.map((model) => ({ value: model.id, label: model.label })));
   fillSelect(els.interpolateModel, interpolators.map((model) => ({ value: model.id, label: model.label })));
@@ -430,10 +567,7 @@ function applyPreset(name) {
     Object.assign(settings[stage], preset[stage]);
   }
 
-  state.settings = sanitizeSettings(settings, state.models);
-  saveSettings();
-  rebuildModelSelects();
-  applySettingsToControls();
+  applyModeCompatibility();
   updateProjection();
   updateCta();
 }
@@ -679,6 +813,8 @@ function renderSystem() {
 
   els.gpuNote.hidden = system.gpu.available;
 
+  updateModeChip();
+  if (state.tab === 'settings') renderStationInfo();
   updateDiskWarning();
   renderActivityCounts();
 }
@@ -814,6 +950,9 @@ function announceJobChanges() {
     else if (job.status === 'cancelled') messages.push(`${name} was cancelled.`);
     else if (job.status === 'cancel_requested') messages.push(`${name} is cancelling.`);
     else if (job.status === 'queued') messages.push(`${name} is queued.`);
+    if (job.status === 'completed' && job.library?.itemId) {
+      queueLibraryRefresh(job.library.itemId);
+    }
   }
   state.previousStatuses = new Map(state.jobs.map((job) => [job.id, job.status]));
   if (messages.length) {
@@ -1207,6 +1346,9 @@ function updateCta() {
     } else if (!state.selected) {
       disabled = true;
       reason = 'Choose a clip to begin.';
+    } else if (processingMode() === 'gpu' && !state.system?.gpu?.available) {
+      disabled = true;
+      reason = 'GPU-only mode is selected, but the station has no Vulkan device. Open Settings to switch modes.';
     } else if (tooLarge) {
       disabled = true;
       reason = `Projected ${projected.width}×${projected.height} is above the 4K output limit. Use a smaller scale.`;
@@ -1294,7 +1436,7 @@ function updateSourceMeta() {
   els.sourceFps.textContent = selected.fps ? `${formatFps(selected.fps)} fps` : '— fps';
   els.sourceDuration.textContent = selected.duration != null ? formatTimecode(selected.duration) : '—';
   els.sourceSize.textContent = formatBytes(selected.size);
-  els.sourceBadge.textContent = '1 clip';
+  els.sourceBadge.textContent = selected.library ? 'Library' : '1 clip';
 }
 
 function validateFile(file) {
@@ -1337,8 +1479,11 @@ function handleFile(file) {
     height: null,
     duration: null,
     fps: null,
+    library: null,
     token,
   };
+  els.sourceOrigin.hidden = true;
+  els.sourceOrigin.textContent = '';
 
   els.dropzone.hidden = true;
   els.previewWrap.hidden = false;
@@ -1364,7 +1509,7 @@ function handleFile(file) {
 
 function clearSelectedSource({ focusDropzone = false } = {}) {
   state.fpsProbeToken += 1;
-  if (state.selected?.url) URL.revokeObjectURL(state.selected.url);
+  if (state.selected?.url && !state.selected?.remote) URL.revokeObjectURL(state.selected.url);
   state.selected = null;
 
   els.videoPreview.pause();
@@ -1377,6 +1522,8 @@ function clearSelectedSource({ focusDropzone = false } = {}) {
   els.sourceName.textContent = '';
   els.sourceName.title = '';
   els.sourceBadge.textContent = 'No clip';
+  els.sourceOrigin.hidden = true;
+  els.sourceOrigin.textContent = '';
   setSourceNote('');
   updateProjection();
   updateCta();
@@ -1384,6 +1531,40 @@ function clearSelectedSource({ focusDropzone = false } = {}) {
   if (focusDropzone) {
     requestAnimationFrame(() => els.dropzone.focus({ preventScroll: true }));
   }
+}
+
+function selectLibrarySource(item, version) {
+  if (!item || !version) return;
+  clearSelectedSource();
+  const metadata = version.metadata || {};
+  const url = libraryStreamUrl(item.id, version.id);
+  const selected = {
+    file: null,
+    remote: true,
+    url,
+    name: item.name,
+    size: metadata.sizeBytes || 0,
+    width: metadata.width || null,
+    height: metadata.height || null,
+    duration: metadata.duration || null,
+    fps: metadata.fps || null,
+    library: { itemId: item.id, versionId: version.id, label: version.label },
+    token: ++state.mediaToken,
+  };
+  state.selected = selected;
+  els.dropzone.hidden = true;
+  els.previewWrap.hidden = false;
+  els.sourceMeta.hidden = false;
+  els.videoPreview.dataset.mediaToken = String(selected.token);
+  els.videoPreview.src = url;
+  els.videoPreview.load();
+  els.sourceOrigin.textContent = `From Library · ${version.label}`;
+  els.sourceOrigin.hidden = false;
+  updateSourceMeta();
+  setSourceNote('Enhancement will create a child version in the Library tree.');
+  updateProjection();
+  updateCta();
+  els.videoPreview.focus({ preventScroll: true });
 }
 
 function probeFrameRate(video) {
@@ -1595,20 +1776,31 @@ function submitJob() {
   setUploadProgress(0);
   updateCta();
 
+  const selected = state.selected;
   const form = new FormData();
-  form.append('file', state.selected.file, state.selected.name);
-  form.append('settings', JSON.stringify(state.settings));
+  if (selected.library) {
+    form.append('libraryVersionId', selected.library.versionId);
+    setUploadProgress(100);
+  } else if (selected.file) {
+    form.append('file', selected.file, selected.name);
+  } else {
+    finishUploadError('The selected clip is missing. Choose it again.');
+    return;
+  }
+  form.append('settings', JSON.stringify({ ...state.settings, processing: { mode: processingMode() } }));
 
   const xhr = new XMLHttpRequest();
   state.uploadXhr = xhr;
   xhr.open('POST', '/api/jobs', true);
   xhr.setRequestHeader('Accept', 'application/json');
 
-  xhr.upload.addEventListener('progress', (event) => {
-    if (!event.lengthComputable) return;
-    setUploadProgress((event.loaded / event.total) * 100);
-    updateCta();
-  });
+  if (!selected.library) {
+    xhr.upload.addEventListener('progress', (event) => {
+      if (!event.lengthComputable) return;
+      setUploadProgress((event.loaded / event.total) * 100);
+      updateCta();
+    });
+  }
 
   xhr.addEventListener('load', () => {
     let data = null;
@@ -1657,11 +1849,15 @@ function finishUploadSuccess(job) {
   }
 
   const submittedName = state.selected?.name || job?.source?.name || 'clip';
+  const wasLibrary = Boolean(state.selected?.library);
   clearSelectedSource({ focusDropzone: true });
   updateCta();
-  showCtaStatus(`Uploaded ${submittedName}.`);
+  showCtaStatus(wasLibrary ? `Queued ${submittedName}.` : `Uploaded ${submittedName}.`);
   loadJobsNow();
   fetchSystem();
+  if (job?.library?.itemId) {
+    queueLibraryRefresh(job.library.itemId);
+  }
 }
 
 function finishUploadError(message) {
@@ -1845,9 +2041,7 @@ function bindEvents() {
     clearSourceError();
     clearSelectedSource({ focusDropzone: true });
     state.settings = sanitizeSettings(DEFAULT_SETTINGS, state.models);
-    saveSettings();
-    rebuildModelSelects();
-    applySettingsToControls();
+    applyModeCompatibility();
     updateProjection();
     updateCta();
   });
@@ -1942,6 +2136,36 @@ function bindEvents() {
     handleJobAction(button.dataset.action, button.dataset.id, button);
   });
 
+  [els.tabEnhance, els.tabLibrary, els.tabSettings].forEach((button) => {
+    button.addEventListener('click', () => showTab(button.dataset.tab));
+    button.addEventListener('keydown', bindTabKeys);
+  });
+  els.modeChip.addEventListener('click', () => showTab('settings', { focus: true }));
+
+  els.libraryUploadBtn.addEventListener('click', () => els.libraryFileInput.click());
+  els.libraryFileInput.addEventListener('change', () => {
+    const file = els.libraryFileInput.files?.[0];
+    if (file) uploadLibraryFile(file);
+  });
+  els.libraryBack.addEventListener('click', closeLibraryDetail);
+  els.libraryDelete.addEventListener('click', deleteLibraryItem);
+  els.libraryEnhance.addEventListener('click', () => {
+    const detail = state.library.detail;
+    const version = selectedLibraryVersion();
+    if (!detail || !version) return;
+    selectLibrarySource(detail, version);
+    showTab('enhance');
+    showCtaStatus(`Loaded ${detail.name} · ${version.label}.`);
+  });
+  els.libraryTree.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-version-action]');
+    if (!button) return;
+    handleVersionAction(button.dataset.versionAction, button.dataset.versionId);
+  });
+
+  els.settingsSave.addEventListener('click', saveStationSettings);
+  els.settingsCrf.addEventListener('input', updateSettingsCrfReadout);
+
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       clearTimeout(state.systemTimer);
@@ -1960,21 +2184,521 @@ function dragHasFiles(event) {
   return Boolean(types && Array.from(types).includes('Files'));
 }
 
-/* ---------- boot ---------- */
+/* ---------- tabs, settings, library ---------- */
+
+function showTab(name, { focus = false } = {}) {
+  if (!['enhance', 'library', 'settings'].includes(name)) name = 'enhance';
+  state.tab = name;
+  const tabs = [
+    { id: 'enhance', button: els.tabEnhance, view: els.viewEnhance },
+    { id: 'library', button: els.tabLibrary, view: els.viewLibrary },
+    { id: 'settings', button: els.tabSettings, view: els.viewSettings },
+  ];
+  for (const item of tabs) {
+    const active = item.id === name;
+    item.button.classList.toggle('is-active', active);
+    item.button.setAttribute('aria-selected', String(active));
+    item.button.tabIndex = active ? 0 : -1;
+    item.view.hidden = !active;
+  }
+  if (name === 'library') {
+    fetchLibrary({ openId: state.library.selectedId });
+  } else if (name === 'settings') {
+    populateSettingsForm();
+    renderStationInfo();
+    fetchStationSettings();
+  }
+  try {
+    history.replaceState(null, '', `#${name}`);
+  } catch {
+    /* file:// previews can reject history updates */
+  }
+  if (focus) tabs.find((item) => item.id === name)?.button.focus();
+}
+
+function bindTabKeys(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const order = ['enhance', 'library', 'settings'];
+  let index = order.indexOf(state.tab);
+  if (event.key === 'ArrowRight') index = (index + 1) % order.length;
+  else if (event.key === 'ArrowLeft') index = (index - 1 + order.length) % order.length;
+  else index = event.key === 'Home' ? 0 : order.length - 1;
+  event.preventDefault();
+  showTab(order[index], { focus: true });
+}
+
+async function fetchStationSettings() {
+  try {
+    const data = await fetchJson('/api/settings');
+    state.station.processingMode = ['auto', 'gpu', 'cpu'].includes(data.processingMode) ? data.processingMode : 'auto';
+    state.station.defaults = data.defaults || null;
+    state.stationOnline = true;
+    if (!state.stationApplied) {
+      state.stationApplied = true;
+      if (!HAS_STORED_SETTINGS && data.defaults) {
+        if (data.defaults.encode) state.settings.encode = { ...state.settings.encode, ...data.defaults.encode };
+        if (data.defaults.audio) state.settings.audio = { ...state.settings.audio, ...data.defaults.audio };
+      }
+    }
+    applyModeCompatibility();
+    populateSettingsForm();
+    renderStationInfo();
+  } catch {
+    state.stationOnline = false;
+    updateModeChip();
+  }
+}
+
+function populateSettingsForm() {
+  if (!els.settingsCodec) return;
+  const mode = processingMode();
+  document.querySelectorAll('input[name="processingMode"]').forEach((input) => {
+    input.checked = input.value === mode;
+  });
+  const defaults = state.station.defaults || {
+    encode: state.settings.encode,
+    audio: state.settings.audio,
+  };
+  const encode = defaults.encode || state.settings.encode;
+  const audio = defaults.audio || state.settings.audio;
+  els.settingsCodec.value = encode.codec || 'h264';
+  els.settingsContainer.value = encode.container || 'mp4';
+  els.settingsPreset.value = encode.preset || 'veryfast';
+  els.settingsAudio.value = audio.mode || 'copy';
+  els.settingsCrf.value = String(Number.isInteger(encode.crf) ? encode.crf : 18);
+  updateSettingsCrfReadout();
+}
+
+function updateSettingsCrfReadout() {
+  const crf = Number(els.settingsCrf.value) || 18;
+  els.settingsCrfValue.textContent = `CRF ${crf}`;
+  els.settingsCrf.setAttribute('aria-valuetext', `Default CRF ${crf}`);
+}
+
+async function saveStationSettings() {
+  const selected = document.querySelector('input[name="processingMode"]:checked');
+  const payload = {
+    processingMode: selected?.value || 'auto',
+    defaults: {
+      encode: {
+        codec: els.settingsCodec.value,
+        container: els.settingsContainer.value,
+        preset: els.settingsPreset.value,
+        crf: Number(els.settingsCrf.value) || 18,
+      },
+      audio: { mode: els.settingsAudio.value },
+    },
+  };
+  els.settingsSave.disabled = true;
+  els.settingsSave.textContent = 'Saving…';
+  try {
+    const data = await fetchJson('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    state.station.processingMode = data.processingMode || payload.processingMode;
+    state.station.defaults = data.defaults || payload.defaults;
+    state.settings.encode = { ...state.settings.encode, ...state.station.defaults.encode };
+    state.settings.audio = { ...state.settings.audio, ...state.station.defaults.audio };
+    applyModeCompatibility();
+    populateSettingsForm();
+    renderStationInfo();
+    els.settingsStatus.textContent = 'Saved. New jobs use this mode and these defaults.';
+    els.settingsStatus.hidden = false;
+    setTimeout(() => { els.settingsStatus.hidden = true; }, 6000);
+  } catch (error) {
+    els.settingsStatus.textContent = error.detail || 'Could not save settings.';
+    els.settingsStatus.hidden = false;
+  } finally {
+    els.settingsSave.disabled = false;
+    els.settingsSave.textContent = 'Save settings';
+  }
+}
+
+function renderStationInfo() {
+  if (!els.stationInfo) return;
+  const system = state.system;
+  const rows = [];
+  if (system) {
+    const gpu = system.gpu || {};
+    rows.push(['GPU', gpu.available ? gpu.name : 'No Vulkan device']);
+    if (gpu.available) rows.push(['AI backend', gpu.driver ? `Vulkan · ${gpu.driver}` : 'Vulkan']);
+    rows.push(['CPU', `${system.cpu?.cores ?? '—'} cores · load ${system.cpu?.load1 != null ? system.cpu.load1.toFixed(2) : '—'}`]);
+    rows.push(['Memory', system.memory ? `${system.memory.availableMb} MB free of ${system.memory.totalMb} MB` : '—']);
+    rows.push(['Storage', system.storage ? `${system.storage.freeGb} GB free` : '—']);
+    rows.push(['Queue', system.queue ? `${system.queue.active} active · ${system.queue.queued} waiting · ${system.queue.maxQueue} max` : '—']);
+  }
+  rows.push(['Processing mode', processingMode() === 'gpu' ? 'GPU only' : processingMode() === 'cpu' ? 'CPU only' : 'Auto']);
+  rows.push(['Limits', `${MAX_UPLOAD_BYTES / (1024 ** 3)} GB upload · 4K output · ${state.system?.limits?.retentionHours ?? 72} h retention`]);
+  els.stationInfo.replaceChildren();
+  for (const [key, value] of rows) {
+    const row = document.createElement('div');
+    row.className = 'station-row';
+    const label = document.createElement('span');
+    label.className = 'station-key';
+    label.textContent = key;
+    const val = document.createElement('span');
+    val.className = 'station-value';
+    val.textContent = value;
+    row.append(label, val);
+    els.stationInfo.appendChild(row);
+  }
+}
+
+/* ---------- library ---------- */
+
+function libraryStreamUrl(itemId, versionId) {
+  return `/api/library/${encodeURIComponent(itemId)}/versions/${encodeURIComponent(versionId)}/stream`;
+}
+
+function libraryThumbUrl(itemId, versionId) {
+  return `/api/library/${encodeURIComponent(itemId)}/versions/${encodeURIComponent(versionId)}/thumbnail`;
+}
+
+function showLibraryNotice(message, { error = false, ttl = 7000 } = {}) {
+  if (!els.libraryNotice) return;
+  clearTimeout(state.library.noticeTimer);
+  els.libraryNotice.textContent = message;
+  els.libraryNotice.classList.toggle('is-error', error);
+  els.libraryNotice.hidden = false;
+  if (ttl > 0) {
+    state.library.noticeTimer = setTimeout(() => {
+      els.libraryNotice.hidden = true;
+    }, ttl);
+  }
+}
+
+async function fetchLibrary({ openId = null, silent = false } = {}) {
+  if (state.library.loading) {
+    clearTimeout(state.library.refreshTimer);
+    state.library.refreshTimer = setTimeout(() => fetchLibrary({ openId, silent }), 800);
+    return;
+  }
+  state.library.loading = true;
+  try {
+    const data = await fetchJson('/api/library');
+    state.library.items = Array.isArray(data.items) ? data.items : [];
+    renderLibraryList();
+    const target = openId || state.library.selectedId;
+    if (target && state.library.items.some((item) => item.id === target)) {
+      await openLibraryItem(target, { preserveVersion: !openId });
+    } else if (state.library.selectedId) {
+      closeLibraryDetail();
+    }
+  } catch (error) {
+    if (!silent) showLibraryNotice(error.detail || 'Could not load the library.', { error: true });
+  } finally {
+    state.library.loading = false;
+  }
+}
+
+function renderLibraryList() {
+  if (!els.libraryList) return;
+  els.libraryList.replaceChildren();
+  els.libraryEmpty.hidden = state.library.items.length > 0;
+  for (const item of state.library.items) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'library-card';
+    card.dataset.libraryId = item.id;
+    card.setAttribute('aria-label', `Open ${item.name}`);
+
+    const thumb = document.createElement('div');
+    thumb.className = 'library-thumb';
+    if (item.activeVersionId) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.src = libraryThumbUrl(item.id, item.activeVersionId);
+      img.addEventListener('error', () => { img.hidden = true; });
+      thumb.appendChild(img);
+    }
+    const play = document.createElement('span');
+    play.className = 'library-thumb-play';
+    play.setAttribute('aria-hidden', 'true');
+    play.textContent = '▶';
+    thumb.appendChild(play);
+
+    const body = document.createElement('div');
+    body.className = 'library-card-body';
+    const title = document.createElement('span');
+    title.className = 'library-card-name';
+    title.textContent = item.name;
+    const meta = document.createElement('span');
+    meta.className = 'library-card-meta mono';
+    const active = item.activeVersion?.metadata;
+    meta.textContent = active
+      ? `${active.width}×${active.height} · ${formatFps(active.fps)} fps · ${item.versionCount} version${item.versionCount === 1 ? '' : 's'}`
+      : `${item.versionCount} version${item.versionCount === 1 ? '' : 's'}`;
+    const label = document.createElement('span');
+    label.className = 'library-card-label';
+    label.textContent = item.activeVersion?.label || 'Original';
+    body.append(title, meta, label);
+    card.append(thumb, body);
+    card.addEventListener('click', () => openLibraryItem(item.id));
+    els.libraryList.appendChild(card);
+  }
+}
+
+async function openLibraryItem(itemId, { preserveVersion = false } = {}) {
+  try {
+    const detail = await fetchJson(`/api/library/${encodeURIComponent(itemId)}`);
+    state.library.selectedId = itemId;
+    state.library.detail = detail;
+    if (!preserveVersion || !detail.versions.some((version) => version.id === state.library.selectedVersionId)) {
+      state.library.selectedVersionId = detail.activeVersionId || detail.versions[0]?.id || null;
+    }
+    els.libraryDetail.hidden = false;
+    els.libraryEmpty.hidden = true;
+    els.viewLibrary.classList.add('detail-open');
+    renderLibraryDetail();
+  } catch (error) {
+    showLibraryNotice(error.detail || 'Could not open this library item.', { error: true });
+  }
+}
+
+function closeLibraryDetail() {
+  state.library.selectedId = null;
+  state.library.detail = null;
+  state.library.selectedVersionId = null;
+  els.libraryDetail.hidden = true;
+  els.viewLibrary.classList.remove('detail-open');
+  els.libraryPlayer.pause();
+  els.libraryPlayer.removeAttribute('src');
+  els.libraryEmpty.hidden = state.library.items.length > 0;
+}
+
+function selectedLibraryVersion() {
+  const detail = state.library.detail;
+  if (!detail) return null;
+  return detail.versions.find((version) => version.id === state.library.selectedVersionId)
+    || detail.versions.find((version) => version.id === detail.activeVersionId)
+    || detail.versions[0]
+    || null;
+}
+
+function renderLibraryDetail() {
+  const detail = state.library.detail;
+  const version = selectedLibraryVersion();
+  if (!detail || !version) return;
+  const meta = version.metadata || {};
+  els.libraryDetailName.textContent = detail.name;
+  els.libraryDetailName.title = detail.name;
+  els.libraryDetailVersions.textContent = `${detail.versions.length} version${detail.versions.length === 1 ? '' : 's'}`;
+  els.libraryDetailMeta.textContent = `${meta.width}×${meta.height} · ${formatFps(meta.fps)} fps · ${formatDuration(meta.duration)} · ${formatBytes(meta.sizeBytes || 0)}`;
+  const active = version.id === detail.activeVersionId;
+  els.libraryDetailLabel.textContent = `${version.label}${active ? ' · active' : ' · restore to branch from here'}`;
+  if (els.libraryPlayer.dataset.versionId !== version.id) {
+    els.libraryPlayer.dataset.versionId = version.id;
+    els.libraryPlayer.src = libraryStreamUrl(detail.id, version.id);
+    els.libraryPlayer.poster = libraryThumbUrl(detail.id, version.id);
+    els.libraryPlayer.load();
+  }
+  els.libraryDownload.href = `/api/library/${encodeURIComponent(detail.id)}/versions/${encodeURIComponent(version.id)}/download`;
+  els.libraryDownload.setAttribute('download', '');
+  renderVersionTree(detail, version);
+}
+
+function renderVersionTree(detail, selected) {
+  els.libraryTree.replaceChildren();
+  const children = new Map();
+  for (const version of detail.versions) {
+    const parent = version.parentVersionId || 'root';
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(version);
+  }
+  for (const list of children.values()) list.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+
+  const walk = (parentId, depth) => {
+    for (const version of children.get(parentId) || []) {
+      const node = document.createElement('div');
+      node.className = 'version-node';
+      node.style.setProperty('--depth', String(depth));
+      node.setAttribute('role', 'treeitem');
+      node.setAttribute('aria-level', String(depth + 1));
+      if (version.id === detail.activeVersionId) node.classList.add('is-active');
+      if (version.id === selected.id) node.classList.add('is-selected');
+
+      const line = document.createElement('div');
+      line.className = 'version-line';
+      const title = document.createElement('span');
+      title.className = 'version-label';
+      title.textContent = version.label;
+      const meta = version.metadata || {};
+      const metaEl = document.createElement('span');
+      metaEl.className = 'version-meta mono';
+      metaEl.textContent = `${meta.width}×${meta.height} · ${formatFps(meta.fps)} fps`;
+      line.append(title, metaEl);
+      if (version.id === detail.activeVersionId) {
+        const badge = document.createElement('span');
+        badge.className = 'version-badge';
+        badge.textContent = 'Active';
+        line.appendChild(badge);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'version-actions';
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'mini-btn';
+      play.dataset.versionAction = 'play';
+      play.dataset.versionId = version.id;
+      play.textContent = 'Play';
+      const download = document.createElement('a');
+      download.className = 'mini-btn';
+      download.href = `/api/library/${encodeURIComponent(detail.id)}/versions/${encodeURIComponent(version.id)}/download`;
+      download.setAttribute('download', '');
+      download.textContent = 'Download';
+      const enhance = document.createElement('button');
+      enhance.type = 'button';
+      enhance.className = 'mini-btn';
+      enhance.dataset.versionAction = 'enhance';
+      enhance.dataset.versionId = version.id;
+      enhance.textContent = 'Enhance';
+      actions.append(play, download, enhance);
+      if (version.id !== detail.activeVersionId) {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'mini-btn';
+        restore.dataset.versionAction = 'activate';
+        restore.dataset.versionId = version.id;
+        restore.textContent = 'Restore';
+        actions.appendChild(restore);
+      }
+      node.append(line, actions);
+      els.libraryTree.appendChild(node);
+      walk(version.id, depth + 1);
+    }
+  };
+  walk('root', 0);
+}
+
+async function handleVersionAction(action, versionId) {
+  const detail = state.library.detail;
+  if (!detail) return;
+  const version = detail.versions.find((item) => item.id === versionId);
+  if (!version) return;
+  if (action === 'play') {
+    state.library.selectedVersionId = versionId;
+    renderLibraryDetail();
+    els.libraryPlayer.play().catch(() => {});
+  } else if (action === 'enhance') {
+    selectLibrarySource(detail, version);
+    showTab('enhance');
+    showCtaStatus(`Loaded ${detail.name} · ${version.label}.`);
+  } else if (action === 'activate') {
+    try {
+      const updated = await fetchJson(`/api/library/${encodeURIComponent(detail.id)}/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versionId }),
+      });
+      state.library.detail = updated;
+      state.library.selectedVersionId = updated.activeVersionId;
+      renderLibraryDetail();
+      renderLibraryList();
+      showLibraryNotice(`Restored ${version.label}. Future enhancements branch from it.`);
+    } catch (error) {
+      showLibraryNotice(error.detail || 'Could not restore this version.', { error: true });
+    }
+  }
+}
+
+async function deleteLibraryItem() {
+  const detail = state.library.detail;
+  if (!detail) return;
+  if (!window.confirm(`Delete “${detail.name}” and all of its versions? This cannot be undone.`)) return;
+  try {
+    await fetchJson(`/api/library/${encodeURIComponent(detail.id)}`, { method: 'DELETE' });
+    closeLibraryDetail();
+    await fetchLibrary({ silent: true });
+    showLibraryNotice(`Deleted ${detail.name}.`);
+  } catch (error) {
+    showLibraryNotice(error.detail || 'Could not delete this item.', { error: true });
+  }
+}
+
+function uploadLibraryFile(file) {
+  const error = validateFile(file);
+  if (error) {
+    showLibraryNotice(error, { error: true });
+    return;
+  }
+  const xhr = new XMLHttpRequest();
+  state.library.uploadXhr = xhr;
+  state.library.uploading = true;
+  els.libraryUploadBtn.disabled = true;
+  els.libraryUploadBtn.textContent = 'Uploading…';
+  els.libraryUploadTrack.hidden = false;
+  els.libraryUploadFill.style.width = '0%';
+  els.libraryUploadTrack.setAttribute('aria-valuenow', '0');
+  const form = new FormData();
+  form.append('file', file, file.name);
+  xhr.open('POST', '/api/library', true);
+  xhr.setRequestHeader('Accept', 'application/json');
+  xhr.upload.addEventListener('progress', (event) => {
+    if (!event.lengthComputable) return;
+    const percent = Math.round((event.loaded / event.total) * 100);
+    els.libraryUploadFill.style.width = `${percent}%`;
+    els.libraryUploadTrack.setAttribute('aria-valuenow', String(percent));
+  });
+  xhr.addEventListener('load', () => {
+    let data = null;
+    try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { data = null; }
+    state.library.uploading = false;
+    state.library.uploadXhr = null;
+    els.libraryUploadBtn.disabled = false;
+    els.libraryUploadBtn.textContent = 'Upload video';
+    els.libraryUploadTrack.hidden = true;
+    els.libraryFileInput.value = '';
+    if (xhr.status >= 200 && xhr.status < 300 && data?.id) {
+      showLibraryNotice(`Added ${data.name} to the library.`);
+      fetchLibrary({ openId: data.id });
+    } else {
+      showLibraryNotice(extractDetail(data, xhr.status), { error: true });
+    }
+  });
+  xhr.addEventListener('error', () => {
+    state.library.uploading = false;
+    els.libraryUploadBtn.disabled = false;
+    els.libraryUploadBtn.textContent = 'Upload video';
+    els.libraryUploadTrack.hidden = true;
+    showLibraryNotice('Connection lost during the library upload.', { error: true });
+  });
+  xhr.send(form);
+}
+
+function queueLibraryRefresh(itemId = null) {
+  clearTimeout(state.library.refreshTimer);
+  state.library.refreshTimer = setTimeout(() => {
+    if (state.tab === 'library' || state.library.selectedId) {
+      fetchLibrary({ openId: state.library.selectedId, silent: true });
+    }
+  }, 600);
+}
+
 
 function boot() {
+  const hash = (location.hash || '').replace('#', '');
+  const initialTab = ['enhance', 'library', 'settings'].includes(hash) ? hash : 'enhance';
   rebuildModelSelects();
   applySettingsToControls();
   updateCrfReadout();
+  updateModeChip();
   updateProjection();
   updateCta();
   renderSystem();
   renderJobs();
+  renderLibraryList();
   saveSettings();
   bindEvents();
+  showTab(initialTab);
   loadHealth();
   fetchSystem();
   fetchJobsNow();
+  fetchStationSettings();
 }
 
 boot();

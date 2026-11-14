@@ -157,6 +157,42 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.db.recover_interrupted(), 1)
         self.assertEqual(self.db.queue_counts(), {"active": 0, "queued": 0})
 
+    def test_library_tree_and_settings(self):
+        item = self.db.create_library_item(
+            name="holiday.mp4",
+            version_id="v_original",
+            path=str(Path(_TMP) / "lib" / "video.mp4"),
+            thumb_path=None,
+            label="Original",
+            metadata={"width": 640, "height": 360, "fps": 24, "duration": 1},
+        )
+        self.assertEqual(item["versionCount"], 1)
+        self.assertEqual(item["activeVersionId"], "v_original")
+        self.db.add_library_version(
+            item_id=item["id"],
+            parent_version_id="v_original",
+            job_id="j_test",
+            path=str(Path(_TMP) / "lib" / "v2.mp4"),
+            thumb_path=None,
+            label="RIFE 4.26 2×",
+            metadata={"width": 1280, "height": 720, "fps": 48, "duration": 1},
+            settings={},
+        )
+        detail = self.db.get_library_item(item["id"])
+        self.assertEqual(len(detail["versions"]), 2)
+        self.assertEqual(detail["versions"][1]["parentVersionId"], "v_original")
+        self.assertTrue(self.db.set_library_active(item["id"], "v_original"))
+        self.assertEqual(self.db.get_library_item(item["id"])["activeVersionId"], "v_original")
+        self.assertFalse(self.db.library_item_busy(item["id"]))
+        self.assertTrue(self.db.delete_library_item(item["id"]))
+        self.assertIsNone(self.db.get_library_item(item["id"]))
+
+    def test_station_settings_roundtrip(self):
+        defaults = self.db.get_station_settings()
+        self.assertEqual(defaults["processingMode"], "auto")
+        self.db.save_station_settings({"processingMode": "gpu", "defaults": defaults["defaults"]})
+        self.assertEqual(self.db.get_station_settings()["processingMode"], "gpu")
+
 
 if __name__ == "__main__":
     unittest.main()
