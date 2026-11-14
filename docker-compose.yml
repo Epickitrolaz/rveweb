@@ -1,0 +1,50 @@
+name: rveweb
+
+services:
+  rveweb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rveweb:1.0.0
+    container_name: rveweb
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    devices:
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - "44"   # video
+      - "993"  # render node group on this LXC (verify with stat -c %g /dev/dri/renderD128)
+    volumes:
+      - rveweb-data:/data
+    environment:
+      DATA_DIR: /data
+      MAX_ACTIVE_JOBS: "1"
+      MAX_QUEUE: "25"
+      MAX_UPLOAD_MB: "1024"
+      MAX_INFLIGHT_UPLOADS: "3"
+      MIN_FREE_GB: "3"
+      RETENTION_HOURS: "72"
+      RIFE_THREADS: "4"
+      LOG_LEVEL: "INFO"
+    shm_size: "256m"
+    stop_grace_period: 30s
+    cpus: 3.5
+    mem_limit: 7g
+    pids_limit: 512
+    security_opt:
+      - "no-new-privileges:true"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  rveweb-data:
